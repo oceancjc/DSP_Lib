@@ -678,7 +678,7 @@ class OFDM:
         self.P += 1
         # data carriers are all remaining carriers
         self.dataCarriers_index = [i for i in self.allActiveCarriers_index if i not in self.pilotCarriers_index]
-        self.mu = int(np.sqrt(qam_order))
+        self.mu = int(np.log2(qam_order))
         print ("allCarriers:       %s" % self.allCarriers_index)
         print ("allActiveCarriers: %s" % self.allActiveCarriers_index)
         print ("pilotCarriers:     %s" % self.pilotCarriers_index)
@@ -695,6 +695,10 @@ class OFDM:
         self.channelResponse = np.array([1+1j])#np.array([1, 0, 0.3+0.3j])
         
     def SP(self,bits):
+        remain_samples = (len(self.dataCarriers_index) * self.mu) - int( len(bits) % (len(self.dataCarriers_index) * self.mu) )
+        print(remain_samples, bits.shape)
+        bits = np.hstack( [bits,np.zeros(remain_samples,dtype=complex)] )
+        print(bits.shape)
         return bits.reshape((len(self.dataCarriers_index), self.mu))
 
 
@@ -797,7 +801,7 @@ class OFDM:
 
 if __name__ == '__main__':
     ofdm = OFDM(num_subcarriers = 1024, num_pilots = 8, pilot_val = 3+3j, qam_order = 16)
-    bits = np.random.binomial(n=1, p=0.5, size=(ofdm.payloadBits_per_OFDM, ))
+    bits = np.random.binomial(n=1, p=0.5, size=(ofdm.payloadBits_per_OFDM-5, ))
     bits_SP = ofdm.SP(bits)
 
     QAM = ofdm.Mapping(bits_SP)
@@ -809,7 +813,7 @@ if __name__ == '__main__':
     OFDM_withCP = ofdm.addCP(OFDM_time, True)
     print ("Number of OFDM samples in time domain with CP: ", len(OFDM_withCP))
     OFDM_TX = OFDM_withCP
-    OFDM_RX = ofdm.channel(OFDM_TX,40)
+    OFDM_RX = ofdm.channel(OFDM_TX,45)
     #OFDM_RX = OFDM_TX
     plt.figure(figsize=(8,2))
     plt.plot(abs(OFDM_TX), label='TX signal')
