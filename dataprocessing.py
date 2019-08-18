@@ -6,6 +6,7 @@ Created on Thu Nov 19 14:51:31 2015
 """
 from __future__ import division, print_function
 import numpy as np
+import pandas as pd
 import scipy.fftpack as sfft
 from scipy.signal import hanning
 from scipy import interpolate
@@ -14,8 +15,8 @@ import scipy.signal as signal
 from matplotlib import pyplot as plt
 from pylab import *
 import gc
-    from sk_dsp_comm import digitalcom as dc
-    from sk_dsp_comm import sigsys as ss
+from sk_dsp_comm import digitalcom as dc
+from sk_dsp_comm import sigsys as ss
 
 def frange(a,b,s=1.0):
     ret = [a]
@@ -37,8 +38,6 @@ def read_data(path):
         a = np.loadtxt(path)
     except:
         print ("Load data failed,check path and file")
-
-    
     return a
 
 def data_normalize(data_ins,bit,signed = 1):
@@ -76,43 +75,50 @@ def data_split_4channels(data_in):
     return ch1i,ch1q,ch2i,ch2q
 
 
-def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], amplitudes=[1], save2file=False, show=False):
+def dBFS_to_linearpower(x):
+    return 10**(x/20.)
+
+
+def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], amplitudes=[0], save=False, show=False):
     lenf, lena = len(freq_offsets), len(amplitudes)
     if lenf > lena:     amplitudes += [0.1]*(lenf-lena)
     elif lenf < lena:       amplitudes = amplitudes[:lenf] 
     N = int(N)
     signal = np.zeros(N,dtype=complex)
     for (f,a) in zip(freq_offsets,amplitudes):
+        #amp = dBFS_to_linearpower(a) / 0.931 # A Hack cuz the spectrum level is -0.62dBFs lower, need instrument verify
+        amp = dBFS_to_linearpower(a)
         step = (float(f) / float(samplerate)) * 2 * np.pi
         phaseArray = np.arange(N) * step
         #欧拉公式，保证正交性，与cos+jsin方法做过对比，生成的信号频谱的均值和方差都更小
         #For a complex sinusoidal theta = 2*pi*f*t where each time step is 1/fs    
-        signal += np.exp(1.0j * phaseArray) * a
+        signal += np.exp(1.0j * phaseArray) * amp
     
-    signal /= max(np.abs(signal))
+    #signal /= max(np.abs(signal))
     signal_Is, signal_Qs = signal.real, signal.imag
 
     if show == True:        plt.plot(signal_Is)
 
-    if save2file == True:
-        f = open("CW_SAMPR{0}_POINT{1}_OFFSET{2}_CN{3}.txt".format(int(samplerate / 1e6), N, int(freq_offsets[0]), len(freq_offsets)), 'wb')
-        writer = csv.writer(f, delimiter='\t', )
-        for i in range(N):  writer.writerow([signal_Is[i], signal_Qs[i]])
-        f.close()
+    if save == True:
+        filename = "CW_SAMPR{0}_POINT{1}_OFFSET{2}_CN{3}.txt".format(int(samplerate / 1e6), N, int(freq_offsets[0]), len(freq_offsets))
+        df = pd.DataFrame(np.vstack([signal_Is,signal_Qs]).T)
+        df.to_csv(filename, sep='\t', header = None, index= False )
+        print('Signal source saved to {} succeed'.format(filename))
+    elif save == False:
+        pass
+    else:
+        df = pd.DataFrame(np.vstack([signal_Is,signal_Qs]).T)
+        df.to_csv(filename, sep='\t', header = None, index= False )
+        print('Signal source saved to {} succeed'.format(save))
     return signal_Is, signal_Qs
 
 
-def CWgeneration2(N=24576, samplerate=245.76e6, freq_offsets=[1e6], save2file=False, show=False):
+def CWgeneration2(N=24576, samplerate=245.76e6, freq_offsets=[1e6], save=False, show=False):
     N = int(N)
     ix = np.arange(N)
     signal_complex = np.zeros(N,dtype=complex)
     for freq_offset in freq_offsets:
         signal_complex += np.cos(2 * np.pi * ix * freq_offset / samplerate) + np.sin(2 * np.pi * ix * freq_offset / samplerate)*1j
-    #signal_complex = np.tile(signal_complex, 2)
-
-    #b, a = signal.butter(1, np.pi / 3.6)
-    #signal_complex = signal.filtfilt(b, a, signal_complex)
-    #signal_complex = signal_complex[N // 2:N // 2 + N]
 
     max_pwr = max(np.abs(signal_complex))
     signal_complex /= max_pwr 
@@ -120,7 +126,7 @@ def CWgeneration2(N=24576, samplerate=245.76e6, freq_offsets=[1e6], save2file=Fa
 
     if show == True:        plt.plot(signal_complex.real)
 
-    if save2file == True:
+    if save == True:
         f = open("CW_SAMPR{0}_POINT{1}_OFFSET{2}_CN{3}.txt".format(int(samplerate / 1e6), N, int(freq_offsets[0]),
                                                                    len(freq_offsets)), 'wb')
         writer = csv.writer(f, delimiter='\t', )
@@ -131,14 +137,14 @@ def CWgeneration2(N=24576, samplerate=245.76e6, freq_offsets=[1e6], save2file=Fa
 
 
 
-si,sq = CWgeneration2(N=245.76e4,freq_offsets=[118e6],show = True)
-f,psd,dc = fft_spectrum(si,sq,245.76e6,len(si))
+#si,sq = CWgeneration2(N=245.76e4,freq_offsets=[118e6],show = True)
+#f,psd,dc = fft_spectrum(si,sq,245.76e6,len(si))
 #psd,f = ss.my_psd(si+sq*1j,len(si),245.76e6);plt.figure(1);plt.plot(f,psd);plt.show()
-print((si+sq*1j).mean(),(si+sq*1j).std(),psd.mean(),psd.std())
-sii,sqq = CWgeneration(N=245.76e4,freq_offsets=[118e6], amplitudes = [1], show = True) 
-f,psd,dc = fft_spectrum(sii,sqq,245.76e6,len(sii))
+#print((si+sq*1j).mean(),(si+sq*1j).std(),psd.mean(),psd.std())
+#sii,sqq = CWgeneration(N=245.76e4,freq_offsets=[118e6], amplitudes = [1], show = True) 
+#f,psd,dc = fft_spectrum(sii,sqq,245.76e6,len(sii))
 #psd,f = ss.my_psd(sii+sqq*1j,len(sii),245.76e6);plt.figure(2);plt.plot(f,psd);plt.show()
-print((sii+sq*1j).mean(),(sii+sqq*1j).std(),psd.mean(),psd.std())
+#print((sii+sq*1j).mean(),(sii+sqq*1j).std(),psd.mean(),psd.std())
 
 def digital_extend_fallback(si,sq,extendbit = 16,back_off=0,ifsave=False):
     if extendbit == 0:
@@ -261,9 +267,9 @@ def fft_spectrum2(sig_i, sig_q, samplingfreq, FFTsize,  show = True):
         #freq = np.linspace(-samplingfreq/2,samplingfreq/2,fftsize,endpoint = False)
         comp = sig_i + sig_q*1j
         print ('fftsizes = ',fftsize)
-        win = hanning(len(comp))
+        #win = hanning(len(comp))
         #f,psd = signal.welch(comp, samplingfreq, window=win, noverlap=None,scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False,nperseg= 256)
-        f,psd = signal.periodogram(comp, samplingfreq, window=win,scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False)
+        f,psd = signal.periodogram(comp, samplingfreq, window='flattop',scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False)
         f = np.fft.fftshift(f)
         psd = np.fft.fftshift(psd)
         #dc_offset = 10*np.log10( sum(psd[fftsize//2-1:fftsize//2+2]) )
@@ -542,6 +548,10 @@ def get_LTEcarrierPositions_bitmode(wave_info):
         cnt+=1
     return pos
     
+def integrated_dBpower(pwr_list):
+    totalpwr = 0
+    for i in pwr_list:       totalpwr += dBFS_to_linearpower(i)
+    return 20*np.log10(totalpwr)
 
 
 def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
@@ -616,7 +626,6 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
         The sign of `mph` is inverted if parameter `valley` is True
     
     """
-
     x = np.atleast_1d(x).astype('float64')
     if x.size < 3:
         return np.array([], dtype=int)
@@ -692,6 +701,7 @@ def _plot(x, mph, mpd, threshold, edge, valley, ax, ind):
             _, ax = plt.subplots(1, 1, figsize=(8, 4))
 
         ax.plot(x, 'b', lw=1)
+        ax.grid()
         if ind.size:
             label = 'valley' if valley else 'peak'
             label = label + 's' if ind.size > 1 else label
