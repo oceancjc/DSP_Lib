@@ -14,7 +14,8 @@ import scipy.signal as signal
 from matplotlib import pyplot as plt
 from pylab import *
 import gc
-
+    from sk_dsp_comm import digitalcom as dc
+    from sk_dsp_comm import sigsys as ss
 
 def frange(a,b,s=1.0):
     ret = [a]
@@ -75,40 +76,69 @@ def data_split_4channels(data_in):
     return ch1i,ch1q,ch2i,ch2q
 
 
-def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], save2file=False, ifplot=False):
+def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], amplitudes=[1], save2file=False, show=False):
+    lenf, lena = len(freq_offsets), len(amplitudes)
+    if lenf > lena:     amplitudes += [0.1]*(lenf-lena)
+    elif lenf < lena:       amplitudes = amplitudes[:lenf] 
+    N = int(N)
+    signal = np.zeros(N,dtype=complex)
+    for (f,a) in zip(freq_offsets,amplitudes):
+        step = (float(f) / float(samplerate)) * 2 * np.pi
+        phaseArray = np.arange(N) * step
+        #欧拉公式，保证正交性，与cos+jsin方法做过对比，生成的信号频谱的均值和方差都更小
+        #For a complex sinusoidal theta = 2*pi*f*t where each time step is 1/fs    
+        signal += np.exp(1.0j * phaseArray) * a
+    
+    signal /= max(np.abs(signal))
+    signal_Is, signal_Qs = signal.real, signal.imag
+
+    if show == True:        plt.plot(signal_Is)
+
+    if save2file == True:
+        f = open("CW_SAMPR{0}_POINT{1}_OFFSET{2}_CN{3}.txt".format(int(samplerate / 1e6), N, int(freq_offsets[0]), len(freq_offsets)), 'wb')
+        writer = csv.writer(f, delimiter='\t', )
+        for i in range(N):  writer.writerow([signal_Is[i], signal_Qs[i]])
+        f.close()
+    return signal_Is, signal_Qs
+
+
+def CWgeneration2(N=24576, samplerate=245.76e6, freq_offsets=[1e6], save2file=False, show=False):
     N = int(N)
     ix = np.arange(N)
-    signal_Is = np.zeros(N)
-    signal_Qs = np.zeros(N)
+    signal_complex = np.zeros(N,dtype=complex)
     for freq_offset in freq_offsets:
-        signal_Is += np.cos(2 * np.pi * ix * freq_offset / samplerate)
-        signal_Qs += np.sin(2 * np.pi * ix * freq_offset / samplerate)
-    signal_Is = np.tile(signal_Is, 2)
-    signal_Qs = np.tile(signal_Qs, 2)
+        signal_complex += np.cos(2 * np.pi * ix * freq_offset / samplerate) + np.sin(2 * np.pi * ix * freq_offset / samplerate)*1j
+    #signal_complex = np.tile(signal_complex, 2)
 
-    b, a = signal.butter(1, np.pi / 3.5)
-    signal_Is = signal.filtfilt(b, a, signal_Is)
-    signal_Qs = signal.filtfilt(b, a, signal_Qs)
+    #b, a = signal.butter(1, np.pi / 3.6)
+    #signal_complex = signal.filtfilt(b, a, signal_complex)
+    #signal_complex = signal_complex[N // 2:N // 2 + N]
 
-    signal_Is = signal_Is[N // 2:N // 2 + N]
-    signal_Qs = signal_Qs[N // 2:N // 2 + N]
+    max_pwr = max(np.abs(signal_complex))
+    signal_complex /= max_pwr 
+    print(signal_complex.mean(),np.abs(signal_complex).mean())
 
-    signal_Is -= np.mean(signal_Is)
-    signal_Qs -= np.mean(signal_Qs)
-
-    if ifplot == True:    
-        plt.plot(signal_Is)
+    if show == True:        plt.plot(signal_complex.real)
 
     if save2file == True:
         f = open("CW_SAMPR{0}_POINT{1}_OFFSET{2}_CN{3}.txt".format(int(samplerate / 1e6), N, int(freq_offsets[0]),
                                                                    len(freq_offsets)), 'wb')
         writer = csv.writer(f, delimiter='\t', )
-        for i in range(N):  writer.writerow([signal_Is[i], signal_Qs[i]])
+        for i in range(N):  writer.writerow([signal_complex.real[i], signal_complex.imag[i]])
         f.close()
 
-    return signal_Is, signal_Qs
+    return signal_complex.real, signal_complex.imag
 
 
+
+si,sq = CWgeneration2(N=245.76e4,freq_offsets=[118e6],show = True)
+f,psd,dc = fft_spectrum(si,sq,245.76e6,len(si))
+#psd,f = ss.my_psd(si+sq*1j,len(si),245.76e6);plt.figure(1);plt.plot(f,psd);plt.show()
+print((si+sq*1j).mean(),(si+sq*1j).std(),psd.mean(),psd.std())
+sii,sqq = CWgeneration(N=245.76e4,freq_offsets=[118e6], amplitudes = [1], show = True) 
+f,psd,dc = fft_spectrum(sii,sqq,245.76e6,len(sii))
+#psd,f = ss.my_psd(sii+sqq*1j,len(sii),245.76e6);plt.figure(2);plt.plot(f,psd);plt.show()
+print((sii+sq*1j).mean(),(sii+sqq*1j).std(),psd.mean(),psd.std())
 
 def digital_extend_fallback(si,sq,extendbit = 16,back_off=0,ifsave=False):
     if extendbit == 0:
@@ -224,6 +254,33 @@ def fft_spectrum(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
         gc.collect()
         return f,psd,dc_offset
 
+def fft_spectrum2(sig_i, sig_q, samplingfreq, FFTsize,  show = True):
+    if len(sig_i) != len(sig_q):    print ("IQ lenth mismatch")
+    else:
+        fftsize =np.minimum( FFTsize,len(sig_i)*10 )
+        #freq = np.linspace(-samplingfreq/2,samplingfreq/2,fftsize,endpoint = False)
+        comp = sig_i + sig_q*1j
+        print ('fftsizes = ',fftsize)
+        win = hanning(len(comp))
+        #f,psd = signal.welch(comp, samplingfreq, window=win, noverlap=None,scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False,nperseg= 256)
+        f,psd = signal.periodogram(comp, samplingfreq, window=win,scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False)
+        f = np.fft.fftshift(f)
+        psd = np.fft.fftshift(psd)
+        #dc_offset = 10*np.log10( sum(psd[fftsize//2-1:fftsize//2+2]) )
+        dc_offset = 10*np.log10(psd[fftsize//2])
+        #dc_offset = 0
+        psd = 10*np.log10(np.clip(psd,1e-25,1e100))
+        
+        if show == True:
+            plt.close('Picture 1')
+            plt.figure('Picture 1')
+            plt.plot(f/1e6,psd,'g')
+            plt.xlabel('Frequency (MHz)')
+            plt.ylabel('Amplitude (dBFS)')
+            plt.grid(True)
+            plt.show()      
+        gc.collect()
+        return f,psd,dc_offset
      
 
 def peaksearch(signal_in,snr_min = 8):
