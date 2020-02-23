@@ -15,8 +15,7 @@ import scipy.signal as signal
 from matplotlib import pyplot as plt
 from pylab import *
 import gc
-from sk_dsp_comm import digitalcom as dc
-from sk_dsp_comm import sigsys as ss
+
 
 def frange(a,b,s=1.0):
     ret = [a]
@@ -56,6 +55,36 @@ def data_normalize(data_ins,bit,signed = 1):
         
     return dataouts
         
+def flatness_compensation(X,y,degree = 5,show = False):
+    from sklearn.linear_model import LinearRegression
+    from sklearn.preprocessing import PolynomialFeatures
+    from sklearn.metrics import mean_squared_error
+
+    regr = LinearRegression()
+    regrs = []
+    scores = []
+    for i in range(1,degree+1):
+        if i == 1:         X_order = X
+        else:
+            order = PolynomialFeatures(degree = i)
+            X_order = order.fit_transform(X)
+
+        #五次多项式拟合
+        regrs.append( regr.fit(X_order, y) )
+        y_predict = regrs[-1].predict(X_order)
+        scores.append( mean_squared_error(y, y_predict) )
+        
+    score = min(scores)
+    regr = regrs[scores.index(score)]
+
+    if show == True:
+        print( 'Order = {}, MSE = {}, Coef = {}, Intecept = {}'.format(scores.index(score)+1,scores,regr.coef_, regr.intercept_) )
+        plt.plot(X,y,'g')
+        plt.plot(X,y_predict,'b')
+        plt.show()
+    coef = regr.coef_.tolist()
+    coef = [regr.intercept_] + coef[1:]
+    return coef
 
 
 def data_split_4channels(data_in):
@@ -78,18 +107,25 @@ def data_split_4channels(data_in):
 def dBFS_to_linearpower(x):
     return 10**(x/20.)
 
+def insert_x(s, ele=0, times=4):
+    s = np.insert(s.reshape(-1,1),1,[[ele]]*(times-1),axis=1)
+    return s.flatten()
 
-def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], amplitudes=[0], save=False, show=False):
-    lenf, lena = len(freq_offsets), len(amplitudes)
-    if lenf > lena:     amplitudes += [0.1]*(lenf-lena)
+def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], amplitudes=[0], init_phases=[0], save=False, show=False):
+    lenf, lenp, lena = len(freq_offsets), len(init_phases), len(amplitudes)
+    if lenf > lena:     amplitudes += [amplitudes[-1]]*(lenf - lena)
     elif lenf < lena:       amplitudes = amplitudes[:lenf] 
+    
+    if lenf > lenp:    init_phases +=[0]*(lenf - lenp)
+    elif lenf < lenp:  init_phases = init_phases[:lenf]
+    
     N = int(N)
     signal = np.zeros(N,dtype=complex)
-    for (f,a) in zip(freq_offsets,amplitudes):
+    for (f,p,a) in zip(freq_offsets,init_phases,amplitudes):
         #amp = dBFS_to_linearpower(a) / 0.931 # A Hack cuz the spectrum level is -0.62dBFs lower, need instrument verify
         amp = dBFS_to_linearpower(a)
         step = (float(f) / float(samplerate)) * 2 * np.pi
-        phaseArray = np.arange(N) * step
+        phaseArray = np.arange(N) * step + np.pi/180 * 1j * p
         #欧拉公式，保证正交性，与cos+jsin方法做过对比，生成的信号频谱的均值和方差都更小
         #For a complex sinusoidal theta = 2*pi*f*t where each time step is 1/fs    
         signal += np.exp(1.0j * phaseArray) * amp
@@ -179,7 +215,11 @@ def digital_extend_fallback(si,sq,extendbit = 16,back_off=0,ifsave=False):
         f.close()
     return si,sq
 
-
+def cal_channelpower(si,sq):
+    si = np.array(si)
+    sq = np.array(sq)
+    linearpwr = np.sum(si**2 + sq**2)
+    return 10*np.log10(linearpwr/len(si))
 
 def fft_process(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
     
@@ -221,6 +261,50 @@ def fft_process(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
         return freq, fft_out_db,dc_offset
         
 
+def plotwithreflevel(freqHz,psd,reflevel,span, loMHz=None):
+    diff = reflevel - np.max(psd)
+    psd += diff
+    plt.xlim(span)
+    plt.ylim([np.min(psd)-10,reflevel])
+    plt.grid(True)
+    if loMHz == None:    plt.title('Spectrum @ Ref Level: {}dBm'.format(reflevel))
+    else:             plt.title('Spectrum @ Ref Level: {}dBm  LO: {}MHz'.format(reflevel,loMHz))
+    plt.plot(freqHz/1e6,psd,'b')
+    plt.show()
+
+def fft_transform(sig_i, sig_q, samplingfreq, FFTsize,  show = 1, nolog=False):
+    if len(sig_i) != len(sig_q):    print ("IQ lenth mismatch")
+    else:
+
+        fftsize =np.minimum( FFTsize,len(sig_i) )
+
+        freq = np.linspace(-samplingfreq/2,samplingfreq/2,fftsize,endpoint = False)
+        raw_fft_outshift = sfft.fftshift(sfft.fft(sig_i+1j*sig_q) / fftsize )
+        if nolog==False:
+            p_fft_outshift = 10*np.log10( np.abs(raw_fft_outshift) / np.sqrt(50) )
+            fft_out_db = np.clip(p_fft_outshift,1e-25,1e100)
+        else:
+            fft_out_db = raw_fft_outshift
+        
+        if show == 1:
+            plt.close('Picture 1')
+            plt.figure('Picture 1')
+            plt.plot(freq/1e6,fft_out_db,'g')
+            plt.xlabel('Frequency (MHz)')
+            plt.ylabel('Amplitude (dBFS)')
+            plt.grid(True)
+            plt.show()
+        elif show == 2: 
+            plt.close('Picture 2')
+            plt.figure('Picture 2')
+            plt.plot(freq,fft_out_db,'g')
+            plt.xlabel('Frequency (MHz)')
+            plt.ylabel('Amplitude (dBFS)')
+            plt.grid(True)
+            plt.show()        
+        return freq, fft_out_db
+
+
 def fft_spectrum(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
     
     if len(sig_i) != len(sig_q):    print ("IQ lenth mismatch")
@@ -260,22 +344,58 @@ def fft_spectrum(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
         gc.collect()
         return f,psd,dc_offset
 
-def fft_spectrum2(sig_i, sig_q, samplingfreq, FFTsize,  show = True):
+def fft_spectrum2(sig_i, sig_q, samplingfreq, FFTsize,  show = True, average = 0):
+    if len(sig_i) != len(sig_q):    print ("IQ lenth mismatch")
+    else:
+        comp = sig_i + sig_q*1j
+        fftsize = FFTsize
+        #win = hanning(len(comp))
+        #f,psd = signal.welch(comp, samplingfreq, window=win, noverlap=None,scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False,nperseg= 256)
+        f, psd = 0, 0
+        if average < 2:
+            fftsize =np.minimum( FFTsize,len(comp)*10 )
+            f,psd = signal.periodogram(comp, samplingfreq, window='flattop',scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False)
+        else:
+            psd_s = 0
+            for i in range(average):
+                signals = comp[i].reshape((1,-1)).tolist()[0]
+                fftsize =np.minimum( FFTsize,len(signals)*10 )
+                f,psd = signal.periodogram(signals, samplingfreq, window='flattop',scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False)
+               # print(psd.shape,fftsize,len(signals))
+                psd_s+= psd                
+            psd = psd_s / average
+        f = np.fft.fftshift(f)
+        psd = np.fft.fftshift(psd)
+        dc_offset = 10*np.log10(psd[int(fftsize//2)])
+
+
+        psd = 10*np.log10(np.clip(psd,1e-25,1e100))
+        
+        if show == True:
+            plt.close('Picture 1')
+            plt.figure('Picture 1')
+            plt.plot(f/1e6,psd,'g')
+            plt.xlabel('Frequency (MHz)')
+            plt.ylabel('Amplitude (dBFS)')
+            plt.grid(True)
+            if average < 2:    plt.title('Spectrum PWR')
+            else:              plt.title('Spectrum PWR with Average {}'.format(average))
+            plt.show()      
+        gc.collect()
+        return f,psd,dc_offset
+
+def fft_density(sig_i, sig_q, samplingfreq, FFTsize,  show = True):
     if len(sig_i) != len(sig_q):    print ("IQ lenth mismatch")
     else:
         fftsize =np.minimum( FFTsize,len(sig_i)*10 )
-        #freq = np.linspace(-samplingfreq/2,samplingfreq/2,fftsize,endpoint = False)
         comp = sig_i + sig_q*1j
-        print ('fftsizes = ',fftsize)
-        #win = hanning(len(comp))
-        #f,psd = signal.welch(comp, samplingfreq, window=win, noverlap=None,scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False,nperseg= 256)
-        f,psd = signal.periodogram(comp, samplingfreq, window='flattop',scaling = 'spectrum',  nfft=fftsize, return_onesided=False,detrend=False)
+        f,psd = signal.periodogram(comp, samplingfreq, window='flattop',scaling = 'density',  nfft=fftsize, return_onesided=False,detrend=False)
         f = np.fft.fftshift(f)
         psd = np.fft.fftshift(psd)
-        #dc_offset = 10*np.log10( sum(psd[fftsize//2-1:fftsize//2+2]) )
+
         dc_offset = 10*np.log10(psd[fftsize//2])
-        #dc_offset = 0
-        psd = 10*np.log10(np.clip(psd,1e-25,1e100))
+
+        #psd = 10*np.log10(np.clip(psd,1e-25,1e100))
         
         if show == True:
             plt.close('Picture 1')
@@ -287,7 +407,6 @@ def fft_spectrum2(sig_i, sig_q, samplingfreq, FFTsize,  show = True):
             plt.show()      
         gc.collect()
         return f,psd,dc_offset
-     
 
 def peaksearch(signal_in,snr_min = 8):
     vbw = len(signal_in)/1000
@@ -450,8 +569,8 @@ def do_ironscript(script_path):
         return -1
         
     try:
-        print (IRON_PYTHON_CMD+'&&ipy '+script_path)
-        res = subprocess.check_output(IRON_PYTHON_CMD+'&&ipy '+script_path , shell = True)
+        print (IRON_PYTHON_CMD+'&&ipy '+'"'+script_path+'"')
+        res = subprocess.check_output(IRON_PYTHON_CMD+'&&ipy '+'"'+script_path+'"' , shell = True)
         print (res)
     except:
         print ("Init Script running failure")

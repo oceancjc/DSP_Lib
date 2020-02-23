@@ -31,7 +31,7 @@ def get_input(string):
         except:
             print('Please Enter Correct number!')
 
-rm = visa.ResourceManager()
+rm = visa.ResourceManager('@py')
 rm.ignore_warning(pyvisa.constants.VI_SUCCESS_MAX_CNT)
 print(rm.list_resources())
 vpp43 = rm.visalib
@@ -69,7 +69,8 @@ class E5052B_device(object):
         pic = self.E5052B.query_binary_values(r'MMEM:TRAN? "%s"' %in_f, datatype=u'b')
         f = open(re_f,'ab')
         for i in pic:
-            f.write(chr(ctypes.c_ubyte(i).value))
+            #f.write(chr(ctypes.c_ubyte(i).value))
+            f.write(ctypes.c_ubyte(i).value)
         f.close()
         
 
@@ -86,6 +87,7 @@ class SMA100_device(object):
             print('[Info]\t SMA100 Connect Success ...')
             self.device_found = 0
             self.reset()
+            self.SMA.timeout = 10000
         except:
             self.device_found = -1
             print('[ERR]\t SMA100 not found \n')
@@ -127,7 +129,7 @@ class N9030A_device(object):
             print('[Info]\t N9030A Connect Success ...')
             self.device_found = 0
             self.N9030A.timeout = 8000
-            self.preset()
+            #self.preset()
         except:
             self.device_found = -1
             print('[ERR]\t N9030A not found \n')   
@@ -171,6 +173,7 @@ class N9030A_device(object):
         if span > 0:     self.N9030A.write('CHP:FREQ:SPAN %fMHz' %span)
         elif span <0:    self.N9030A.write('CHP:FREQ:SPAN FULL')
         else:            self.N9030A.write('CHP:FREQ:SPAN:AUTO ON')
+        self.N9030A.query_ascii_values(r'*OPC?')
 
         
         
@@ -205,15 +208,18 @@ class N9030A_device(object):
     def set_cent_freq_Hz(self,cent = 1000 ):
         cmd = r'FREQ:CENT %fHz'
         self.N9030A.write(cmd %cent)
+        self.N9030A.query_ascii_values(r'*OPC?')
        
     def set_span_MHz(self,band = 50, unit = 'MHz'):
         cmd = r'FREQ:SPAN %f'+unit
         self.N9030A.write(cmd %band)
         self.N9030A.write('CALC:MARK1:FUNC:BAND:SPAN %f %s' %(band,unit))
+        self.N9030A.query_ascii_values(r'*OPC?')
         
     def set_freq_span_MHz(self,freq = 1000, band = 50):
         self.set_cent_freq_Hz(freq*1e6)
         self.set_span_MHz(band)
+        time.sleep(0.1)
      
     def set_vbw_kHz(self,vbw):
         cmd = r'BAND %fkHz' %vbw
@@ -229,7 +235,12 @@ class N9030A_device(object):
         if state == 1:  self.N9030A.write('CALC:MARK:TABL 1')
         else:           self.N9030A.write('CALC:MARK:TABL 0')
         
-    
+    def set_ref_level(self, reflvldBm):
+        self.N9030A.write(r'CORR:NOIS:FLO OFF')
+        att = self.N9030A.query_ascii_values('POW:ATT?')[0]
+        reflvldBm = min(reflvldBm, -40+att)
+        self.N9030A.write('DISP:WIND1:TRAC:Y:RLEV {}DBM'.format(reflvldBm))
+
     def set_mechAtt(self,att):
         self.N9030A.write('POW:ATT %d' %att)
     
@@ -255,17 +266,17 @@ class N9030A_device(object):
     def get_markPower_dBm(self,mark):
         return self.N9030A.query_ascii_values(r'CALC:MARK%d:Y?' %mark)[0]
 
-    def get_freq_value_MHz_dBm(self,trace_average_need = 0):
+    def get_freq_value_MHz_dBm(self,trace_average_need = 0,show=False):
         if trace_average_need !=0:
             self.trace_average()
-            time.sleep(5)
+            time.sleep(3)
         
         self.N9030A.write(r'CALC:MARK1:MAX')
-        time.sleep(0.3)
+        self.N9030A.query_ascii_values(r'*OPC?')
         y = self.N9030A.query_ascii_values(r'CALC:MARK1:Y?')
         x = self.N9030A.query_ascii_values(r'CALC:MARK1:X?')
-        x = x[0]/1000000.
-        print('Freq = %fMHz , Amp = %fdBm' %(x,y[0]))
+        x = x[0]/1e6
+        if show == True:    print('Freq = %fMHz , Amp = %fdBm' %(x,y[0]))
 
         if trace_average_need !=0:
             self.trace_immediate()
@@ -276,8 +287,55 @@ class N9030A_device(object):
         return s.split(',')
         
     def get_TOI_value(self,freq1,freq2,unit='MHz'):
-        self.set_cent_freq( (freq1+freq2)/2. )
-        self.N9030A.write('SENSe:POWer:RF:ATTenuation 0') 
+        '''
+        Returns 12 scalar results, in the following order.
+
+        1. The worst case Output Intermod Point value in Hz.
+
+        2. The worst case Output Intermod Power value in dBm
+
+        3. The worst case Output Intercept Power value in dBm
+
+        4. The lower base frequency value in Hz
+
+        5. The lower base power value in dBm
+        
+        6. The upper base frequency value in Hz
+
+        7. The upper base power value in dBm
+
+        8. The lower Output Intermod Point in Hz
+
+        9. The lower Output Intermod Power value in dBm
+
+        10. The lower Output Intercept Power value in dBm
+
+        11. The upper Output Intermod Point in Hz
+
+        12. The upper Output Intermod Power value in dBm
+
+        13. The upper Output Intercept Power value in dBm
+
+        '''
+        
+        self.N9030A.write('CONFigure:TOI')
+        self.set_cent_freq_Hz( (freq1+freq2)/2.*1e6 )
+        band = 5*math.fabs(freq2-freq1)
+        self.N9030A.write(r'SENSe:TOI:FREQuency:SPAN %fMHz' %band)
+        self.N9030A.query_ascii_values(r'*OPC?')
+        self.N9030A.write(r'TOI:BWID %f kHz' %band)
+        self.N9030A.query_ascii_values(r'*OPC?')
+        self.N9030A.write(r'SENSe:TOI:AVERage:STATe ON')
+        self.N9030A.query_ascii_values(r'*OPC?')
+        time.sleep(5)
+        #self.N9030A.write(r'INIT:CONT 0')
+        results = self.N9030A.query_ascii_values(r'FETCh:TOI2?')
+        #self.N9030A.write(r'INIT:CONT 1')
+        return results
+    
+    def get_ip3(self,freq1,freq2,unit='MHz'):
+        self.set_cent_freq_Hz( (freq1+freq2)/2.*1e6 )
+        #self.N9030A.write('SENSe:POWer:RF:ATTenuation 0') 
         self.N9030A.write('CONFigure:TOI')
         time.sleep(1)
         band = 6*math.fabs(freq2-freq1)
@@ -285,8 +343,8 @@ class N9030A_device(object):
         time.sleep(0.5)
         self.N9030A.write(r'TOI:BWID 15 kHz')
         print('bandwidth =',band)
-        y = self.N9030A.query_ascii_values(r'FETCh:TOI:IP3?')
-        return y
+        ip3 = self.N9030A.query_ascii_values(r'FETCh:TOI:IP3?')
+        return ip3
         
     def get_noise_floor(self):
         self.N9030A.write(r'CONFigure:CHPower')
@@ -294,6 +352,7 @@ class N9030A_device(object):
         self.N9030A.write(r'SENSe:POWer:RF:ATTenuation 0')    
         self.N9030A.write(r'SENSe:POWer:RF:GAIN:STATe ON')
         self.N9030A.write(r'SENSe:POWer:RF:GAIN:BAND LOW')
+        self.N9030A.query_ascii_values(r'*OPC?')
         time.sleep(0.5)
         noise_floor = self.N9030A.query_ascii_values(r'MEASure:CHPower:DENSity?')
         print('noise_floor =',noise_floor[0])
@@ -319,8 +378,9 @@ class N9030A_device(object):
             if num != 0:
                 time.sleep(3)
                 self.N9030A.write('CALC:MARK:AOFF')
-                for i in xrange(1,num+1):
-                    for j in xrange(i):         self.N9030A.write('CALC:MARK%d:MAX:NEXT' %i)
+                for i in range(1,num+1):
+                    for j in range(i):         self.N9030A.write('CALC:MARK%d:MAX:NEXT' %i)
+                    self.N9030A.query_ascii_values(r'*OPC?')
                     xs.append( self.N9030A.query_ascii_values(r'CALC:MARK%d:X?' %i)[0] / 1e6 )
                     ys.append( self.N9030A.query_ascii_values(r'CALC:MARK%d:Y?' %i)[0] )
             
@@ -337,8 +397,9 @@ class N9030A_device(object):
                 print(num)
                 self.N9030A.write('CALC:MARK:AOFF')
                 if num == 0:        continue
-                for i in xrange(1,num+1):
-                    for j in xrange(i):         self.N9030A.write('CALC:MARK%d:MAX:NEXT' %i)
+                for i in range(1,num+1):
+                    for j in range(i):         self.N9030A.write('CALC:MARK%d:MAX:NEXT' %i)
+                    self.N9030A.query_ascii_values(r'*OPC?')
                     xs.append( self.N9030A.query_ascii_values(r'CALC:MARK%d:X?' %i)[0] / 1e6 )
                     ys.append( self.N9030A.query_ascii_values(r'CALC:MARK%d:Y?' %i)[0] )
                 if capPath != '':
@@ -379,7 +440,44 @@ class N9030A_device(object):
         
     def disconnect(self):
         self.N9030A.clear(session)
+        
 
+class E4438_device(object):
+    def __init__(self,ip):
+        global rm,session        
+        print('Step 1\t Connecting E4438 ...\n')
+        self.DEVIP = ip
+        try:  
+            self.E4438 = rm.open_resource('TCPIP0::%s::INSTR' %ip)
+            print('[Info]\t E4438 Connect Success ...')
+            self.device_found = 0
+            self.E4438.timeout = 8000
+        except:
+            self.device_found = -1
+            print('[ERR]\t E4438 not found \n')   
+
+    def set_single_tone_MHz(self,freqMHz,pwrdBm= 88):
+        if pwrdBm < 88:        self.E4438.write(r'SOUR:POW %f' %pwrdBm)
+        self.E4438.write(r'FREQ %fMhz' %freqMHz)
+        self.E4438.write(r'FREQ:MODE FIXed')
+        self.E4438.write(r'OUTP ON')
+        
+    def output_on_off(self,enable = 1):
+        if enable == 1:
+            self.E4438.write(r'OUTP ON')
+        else:
+            self.E4438.write(r'OUTP OFF')     
+            
+    def set_multitone_MHz(self,num,loMHz,spacingMHz,ampdBm):
+        self.E4438.write(r'FREQ %fMhz' %loMHz)
+        self.E4438.write(r'SOUR:POW %f' %ampdBm)
+        self.E4438.write(r'RADio:MTONe:ARB:SETup:TABLe:FSPacing %fMhz' %spacingMHz)
+        self.E4438.write(r'RADio:MTONe:ARB:SETup:TABLe:NTONes %d' %num)
+        self.E4438.write(r':RADio:MTONe:ARB:SETup:TABLe:PHASe:INITialize FIXed')
+        self.E4438.write(r'OUTPut:MODulation ON')
+            
+    def disconnect(self):
+        self.E4438.close()
 
 
 class PWR_device(object):
@@ -578,5 +676,7 @@ class PWR_device(object):
 #    if code != 235: 
 #        raise SMTPAuthenticationError(code, response) 
 if __name__ == '__main__':
-    n = N9030A_device('10.99.37.210')
+    n = SMA100_device('192.168.1.100')
+    n.output_on_off(0)
+    #n.set_single_tone_MHz(3570,-18.41+6.8)
     
