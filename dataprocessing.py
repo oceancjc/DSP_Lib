@@ -13,7 +13,6 @@ from scipy import interpolate
 import subprocess,csv,os
 import scipy.signal as signal
 from matplotlib import pyplot as plt
-from pylab import *
 import gc
 
 
@@ -134,7 +133,7 @@ def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], amplitudes=[0
     signal_Is, signal_Qs = signal.real, signal.imag
 
     if show == True:        plt.plot(signal_Is)
-
+    filename = 0
     if save == True:
         filename = "CW_SAMPR{0}_POINT{1}_OFFSET{2}_CN{3}.txt".format(int(samplerate / 1e6), N, int(freq_offsets[0]), len(freq_offsets))
         df = pd.DataFrame(np.vstack([signal_Is,signal_Qs]).T)
@@ -984,7 +983,7 @@ class OFDM:
         # transform the constellation point into the bit groups
         return np.vstack([self.demapping_table[C] for C in hardDecision]), hardDecision
 
-
+'''
 if __name__ == '__main__':
     ofdm = OFDM(num_subcarriers = 1024, num_pilots = 8, pilot_val = 3+3j, qam_order = 16)
     bits = np.random.binomial(n=1, p=0.5, size=(ofdm.payloadBits_per_OFDM-5, ))
@@ -1015,4 +1014,4 @@ if __name__ == '__main__':
     equalized_Hest = ofdm.equalize(OFDM_demod, Hest)
     QAM_est = ofdm.get_payload(equalized_Hest)
     PS_est, hardDecision = ofdm.Demapping(QAM_est)
-
+'''
