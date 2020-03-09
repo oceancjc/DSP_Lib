@@ -214,11 +214,16 @@ def digital_extend_fallback(si,sq,extendbit = 16,back_off=0,ifsave=False):
         f.close()
     return si,sq
 
-def cal_channelpower(si,sq):
+def channelpower(si,sq):
     si = np.array(si)
     sq = np.array(sq)
     linearpwr = np.sum(si**2 + sq**2)
     return 10*np.log10(linearpwr/len(si))
+
+def papr(si,sq):
+    ave_pwr = channelpower(si,sq)
+    peak_pwr = 10*np.log10( np.max(si**2 + sq**2) )
+    return peak_pwr - ave_pwr
 
 def fft_process(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
     
@@ -982,6 +987,73 @@ class OFDM:
 
         # transform the constellation point into the bit groups
         return np.vstack([self.demapping_table[C] for C in hardDecision]), hardDecision
+    
+from sk_dsp_comm import digitalcom as dc
+class SIMPLEOFDM:
+    def __init__(self,fsMHz = 245.76, total_carriers = 64, used_carriers = 32, num_pilots = 8, pilot_val = 3+3j, qam_order = 16):
+        if qam_order in (2, 4, 16, 64, 256):    self.QAM_MODE = qam_order  
+        else:  self.QAM_MODE = 16
+        self.FSMHZ = fsMHz
+        self.TOTAL_SUBCARRIERS = total_carriers
+        self.USED_CARRIERS = used_carriers
+        self.NUM_PIOLOTS = num_pilots
+        self.PILOT_PATTEN = pilot_val
+        
+    def qam_mapping(self,N_symb=10000,Ns=1, data = None, plot=False):
+        iq_uni,b,iq = dc.QAM_gray_encode_bb(N_symb,Ns,self.QAM_MODE,'src', ext_data = data)
+        if plot == True:
+            plt.plot(iq_uni.real,iq_uni.imag,'.')
+            plt.xlabel('In-Phase')
+            plt.ylabel('Quadrature')
+            plt.axis('equal')
+            plt.grid()
+            plt.show() 
+        return iq_uni,b,iq
+    
+    def ofdm_symble(self,qam_data,cplen = 0, plot = False):
+        if cplen == 0:
+            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,False,0)
+        else:
+            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,True,self.TOTAL_SUBCARRIERS // 4)
+        
+        if plot == True:
+            plt.psd(r, 1024,self.FSMHZ);
+            plt.xlabel(r'Normalized Frequency ($\omega/(2\pi)=f/f_s$)')
+            plt.ylim(-140)
+            plt.show()
+        return r
+    
+
+class TxDigital:
+    def __init__(self, fs_inMHz, fs_outMHz):
+        self.FS_INMHZ = fs_inMHz
+        self.FSOUTMHZ = fs_outMHz
+        
+    def nco_mixer(self, freqMHz, data_in,fs_inMHz = None):
+        length = np.arange(len(data_in))
+        if fs_inMHz != None:     return data_in*np.exp(2*np.pi*1j*freqMHz / fs_inMHz * length)
+        else:     return data_in*np.exp(2*np.pi*1j*freqMHz / self.FSOUTMHZ * length)
+    
+    def upsampling(self, data_in, times, w = 0.6, plotfilter = False):
+        times = int(times)
+        filt = signal.butter(97, w/times, 'lp', output='sos')
+        if plotfilter == True:
+            b,a = signal.butter(4, 0.25, 'low', analog=True)
+            w, h = signal.freqs(b,a)
+            plt.semilogx(w, 20 * np.log10(abs(h)))
+            plt.title('Butterworth filter frequency response')
+            plt.xlabel('Frequency [radians / second]')
+            plt.ylabel('Amplitude [dB]')
+            plt.margins(0, 0.1)
+            plt.grid(which='both', axis='both')
+            plt.axvline(0.25, color='green') # cutoff frequency
+            plt.show()
+        data_or = insert_x(data_in.real,times=times)
+        data_oi = insert_x(data_in.imag,times=times)
+        filtered = signal.sosfilt(filt, data_or+1j*data_oi)
+        return filtered    
+    
+    
 
 '''
 if __name__ == '__main__':
@@ -1015,3 +1087,4 @@ if __name__ == '__main__':
     QAM_est = ofdm.get_payload(equalized_Hest)
     PS_est, hardDecision = ofdm.Demapping(QAM_est)
 '''
+ofdm = SIMPLEOFDM(30.72, 2048, 1200, 0, 0, 64)
