@@ -1014,7 +1014,7 @@ class SIMPLEOFDM:
         if cplen == 0:
             r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,False,0)
         else:
-            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,True,self.TOTAL_SUBCARRIERS // 4)
+            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,True,int(cplen))
         
         if plot == True:
             plt.psd(r, 1024,self.FSMHZ);
@@ -1031,15 +1031,16 @@ class TxDigital:
         
     def nco_mixer(self, freqMHz, data_in,fs_inMHz = None):
         length = np.arange(len(data_in))
+        if np.isclose(freqMHz,0) == True:   return data_in
         if fs_inMHz != None:     return data_in*np.exp(2*np.pi*1j*freqMHz / fs_inMHz * length)
         else:     return data_in*np.exp(2*np.pi*1j*freqMHz / self.FSOUTMHZ * length)
     
     def upsampling(self, data_in, times, w = 0.6, plotfilter = False):
         times = int(times)
-        filt = signal.butter(97, w/times, 'lp', output='sos')
+        sos = signal.butter(87, w/times, 'lp',output='sos')
+        #b,a = signal.butter(97, w/times, 'lp')
         if plotfilter == True:
-            b,a = signal.butter(4, 0.25, 'low', analog=True)
-            w, h = signal.freqs(b,a)
+            w, h = signal.sosfreqz(sos)
             plt.semilogx(w, 20 * np.log10(abs(h)))
             plt.title('Butterworth filter frequency response')
             plt.xlabel('Frequency [radians / second]')
@@ -1048,11 +1049,25 @@ class TxDigital:
             plt.grid(which='both', axis='both')
             plt.axvline(0.25, color='green') # cutoff frequency
             plt.show()
-        data_or = insert_x(data_in.real,times=times)
-        data_oi = insert_x(data_in.imag,times=times)
-        filtered = signal.sosfilt(filt, data_or+1j*data_oi)
-        return filtered    
+        updata = insert_x(data_in,times=times)
+        filtered = signal.sosfiltfilt(sos, updata)
+        return filtered   
     
+    def upsampling2(self,data_in, times, w = 0.6, plotfilter = False):
+        times = int(times)
+        updata = signal.resample(data_in, times*len(data_in), window = None)
+        sos = signal.butter(87, w/times, 'lp',output='sos')
+        filtered = signal.sosfiltfilt(sos, updata)
+        return filtered
+    
+    def addwindow(self, data, window = 'hanning'):
+        WINDOWLEN = 4096
+        shape = data.shape
+        if window == 'hanning':    window = signal.hanning(WINDOWLEN).reshape([-1,1])
+        else:    return data
+        
+        window_seq = np.concatenate((window[:WINDOWLEN//2],np.ones(len(data) - WINDOWLEN).reshape([-1,1]),window[WINDOWLEN//2:]))
+        return (data.reshape([-1,1])*window_seq).reshape(shape)
     
 
 '''
@@ -1087,4 +1102,3 @@ if __name__ == '__main__':
     QAM_est = ofdm.get_payload(equalized_Hest)
     PS_est, hardDecision = ofdm.Demapping(QAM_est)
 '''
-ofdm = SIMPLEOFDM(30.72, 2048, 1200, 0, 0, 64)
