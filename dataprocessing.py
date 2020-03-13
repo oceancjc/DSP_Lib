@@ -1012,10 +1012,9 @@ class SIMPLEOFDM:
     
     def ofdm_symble(self,qam_data,cplen = 0, plot = False):
         if cplen == 0:
-            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,False,0)
+            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
         else:
-            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,True,int(cplen))
-        
+            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
         if plot == True:
             plt.psd(r, 1024,self.FSMHZ);
             plt.xlabel(r'Normalized Frequency ($\omega/(2\pi)=f/f_s$)')
