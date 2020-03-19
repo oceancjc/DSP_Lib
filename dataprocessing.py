@@ -412,6 +412,9 @@ def fft_density(sig_i, sig_q, samplingfreq, FFTsize,  show = True):
         gc.collect()
         return f,psd,dc_offset
 
+def rmsNoiseFloor(linearpsd, ave = 1):
+    return 10*np.log10(linearpsd / int(ave)).mean()
+
 def peaksearch(signal_in,snr_min = 8):
     vbw = len(signal_in)/1000
     indexs = signal.find_peaks_cwt(signal_in,np.arange(1,vbw),min_snr = snr_min)
