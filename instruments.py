@@ -237,8 +237,6 @@ class N9030A_device(object):
         
     def set_ref_level(self, reflvldBm):
         self.N9030A.write(r'CORR:NOIS:FLO OFF')
-        att = self.N9030A.query_ascii_values('POW:ATT?')[0]
-        reflvldBm = min(reflvldBm, -40+att)
         self.N9030A.write('DISP:WIND1:TRAC:Y:RLEV {}DBM'.format(reflvldBm))
 
     def set_mechAtt(self,att):
@@ -430,8 +428,54 @@ class N9030A_device(object):
 		
     def fetchEVM(self):
         return self.N9030A.query(r'FETC:EVM?')
+    
+    def initACPR(self,carrier_cnt = 1, loMHz = None, spanMHz = None):
+        self.N9030A.write('INIT:ACP')
+        if int(carrier_cnt) < 1:    carrier_cnt = 1
+        self.N9030A.query_ascii_values(r'*OPC?')
+        self.N9030A.write('ACP:CARR:COUN {}'.format(int(carrier_cnt)))
+        if loMHz != None:    self.N9030A.write(r'FREQ:CENT {}Hz'.format(loMHz*1e6))
+        if spanMHz != None:  self.N9030A.write(r'ACP:FREQ:SPAN {}Hz'.format(spanMHz*1e6))
+        
 
-		
+    def setACPRCarrier(self, carrier_number, freqFromLOMHz, bandwidthMHz, spacingMHz):
+        #self.N9030A.write()
+        self.N9030A.write('ACP:CARR{}:LIST:BAND {}MHz'.format(int(carrier_number),float(bandwidthMHz)))
+        self.N9030A.write('ACP:CARR{}:LIST:WIDT {}MHz'.format(int(carrier_number),float(spacingMHz)))
+        
+    def setACPROffsets(self, offsetFreqMHz = [], offsetBandwidthMHz = [], offsetSpacingMHz = []):
+        if len(offsetFreqMHz) != len(offsetBandwidthMHz) or  len(offsetFreqMHz) != len(offsetSpacingMHz):
+            print('Input length mismatch')
+        else:
+            cmd = [str(float(i))+'MHz' for i in offsetFreqMHz]
+            cmd = ', '.join(cmd)
+            self.N9030A.write('ACP:OFFS1:LIST '+cmd)
+            cmd = [str(float(i))+'MHz' for i in offsetBandwidthMHz]
+            cmd = ', '.join(cmd)
+            self.N9030A.write('ACP:OFFS1:LIST:BAND '+cmd) 
+            cmd = ['0']*6
+            for i in range(len(offsetFreqMHz)):    cmd[i] = '1'
+            cmd = ', '.join(cmd)            
+            self.N9030A.write('ACP:OFFS1:LIST:STAT '+cmd)
+            '''
+            cmd = [str(float(i))+'MHz' for i in offsetSpacingMHz]
+            cmd = ', '.join(cmd)
+            self.N9030A.write('ACP:OFFS1:LIST:BAND '+cmd)  
+            '''
+            
+    def getACPR(self):
+        offsets = self.N9030A.query('ACP:OFFS1:LIST:STAT?')[:-1].split(',')
+        r = self.N9030A.query('READ:ACP?')[:-1].split(',')
+        dicr = {}
+        dicr['TotalCarrierPWR(dBm)'] = float(r[1])
+        for i in range(len(offsets)):
+            if offsets[i] == '1':    
+                dicr['LowerOffset{}RelPWR(dBc)'.format(i+1)] = float(r[4+i*4])
+                dicr['LowerOffset{}AbsPWR(dBm)'.format(i+1)] = float(r[5+i*4])
+                dicr['UpperOffset{}RelPWR(dBc)'.format(i+1)] = float(r[6+i*4])
+                dicr['UpperOffset{}AbsPWR(dBm)'.format(i+1)] = float(r[7+i*4])
+        return dicr
+            
     def sendCmd(self,string):
         self.N9030A.write(string)
     
@@ -676,7 +720,12 @@ class PWR_device(object):
 #    if code != 235: 
 #        raise SMTPAuthenticationError(code, response) 
 if __name__ == '__main__':
-    n = SMA100_device('192.168.1.100')
-    n.output_on_off(0)
+    n = N9030A_device('192.168.1.102')
+    n.preset()
+    #n.set_freq_span_MHz(5820,120)
+#    n.initACPR(1,5820,200)
+#    n.setACPRCarrier(1,0,20,0)
+#    n.setACPROffsets([20,40],[20]*2,[0]*2)
+    
     #n.set_single_tone_MHz(3570,-18.41+6.8)
     

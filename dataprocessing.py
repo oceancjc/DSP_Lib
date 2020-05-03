@@ -102,9 +102,12 @@ def data_split_4channels(data_in):
             ch2q.append(data_in[i])
     return ch1i,ch1q,ch2i,ch2q
 
+def dBFs_to_amp(x):
+    return 10**(x/20.)
+
 
 def dBFS_to_linearpower(x):
-    return 10**(x/20.)
+    return 10**(x/10.)
 
 def insert_x(s, ele=0, times=4):
     s = np.insert(s.reshape(-1,1),1,[[ele]]*(times-1),axis=1)
@@ -121,8 +124,8 @@ def CWgeneration(N=24576, samplerate=245.76e6, freq_offsets=[1e6], amplitudes=[0
     N = int(N)
     signal = np.zeros(N,dtype=complex)
     for (f,p,a) in zip(freq_offsets,init_phases,amplitudes):
-        #amp = dBFS_to_linearpower(a) / 0.931 # A Hack cuz the spectrum level is -0.62dBFs lower, need instrument verify
-        amp = dBFS_to_linearpower(a)
+        #amp = dBFs_to_amp(a) / 0.931 # A Hack cuz the spectrum level is -0.62dBFs lower, need instrument verify
+        amp = dBFs_to_amp(a)
         step = (float(f) / float(samplerate)) * 2 * np.pi
         phaseArray = np.arange(N) * step + np.pi/180 * 1j * p
         #欧拉公式，保证正交性，与cos+jsin方法做过对比，生成的信号频谱的均值和方差都更小
@@ -677,7 +680,7 @@ def get_LTEcarrierPositions_bitmode(wave_info):
 def integrated_dBpower(pwr_list):
     totalpwr = 0
     for i in pwr_list:       totalpwr += dBFS_to_linearpower(i)
-    return 20*np.log10(totalpwr)
+    return 10*np.log10(totalpwr)
 
 
 def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
