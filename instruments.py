@@ -219,7 +219,7 @@ class N9030A_device(object):
     def set_freq_span_MHz(self,freq = 1000, band = 50):
         self.set_cent_freq_Hz(freq*1e6)
         self.set_span_MHz(band)
-        time.sleep(0.1)
+        self.N9030A.query_ascii_values(r'*OPC?')
      
     def set_vbw_kHz(self,vbw):
         cmd = r'BAND %fkHz' %vbw
@@ -238,9 +238,11 @@ class N9030A_device(object):
     def set_ref_level(self, reflvldBm):
         self.N9030A.write(r'CORR:NOIS:FLO OFF')
         self.N9030A.write('DISP:WIND1:TRAC:Y:RLEV {}DBM'.format(reflvldBm))
+        self.N9030A.query_ascii_values(r'*OPC?')
 
     def set_mechAtt(self,att):
         self.N9030A.write('POW:ATT %d' %att)
+        self.N9030A.query_ascii_values(r'*OPC?')
     
     def set_averagetime(self,time):
         self.N9030A.write('AVER:COUN %d' %time)
@@ -723,9 +725,9 @@ if __name__ == '__main__':
     n = N9030A_device('192.168.1.102')
     n.preset()
     #n.set_freq_span_MHz(5820,120)
-#    n.initACPR(1,5820,200)
-#    n.setACPRCarrier(1,0,20,0)
-#    n.setACPROffsets([20,40],[20]*2,[0]*2)
+    n.initACPR(1,2540,120)
+    n.setACPRCarrier(1,0,20,0)
+    n.setACPROffsets([20,40],[20]*2,[0]*2)
     
     #n.set_single_tone_MHz(3570,-18.41+6.8)
     
