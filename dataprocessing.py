@@ -856,7 +856,9 @@ def peaksearch_v2(sigin,threshold = None,show=False):
         indexs = detect_peaks(sigin, mph=threshold, mpd=2, show=show)
     return indexs, [sigin[i] for i in indexs ]
 
-
+def getCorrPeak(tx=[1,2,3], rx=[3,2,1,2,3]):
+    r = np.correlate(rx,tx,'full')
+    return np.argmax(r) - len(tx) + 1, np.max(r)
 
 class OFDM:
     def __init__(self, num_subcarriers = 64, num_pilots = 8, pilot_val = 3+3j, qam_order = 16):
@@ -1001,14 +1003,18 @@ class SIMPLEOFDM:
         else:  self.QAM_MODE = 16
         self.FSMHZ = fsMHz
         self.TOTAL_SUBCARRIERS = total_carriers
-        self.USED_CARRIERS = used_carriers
+        self.USED_CARRIERS = used_carriers  
         self.NUM_PIOLOTS = num_pilots
         self.PILOT_PATTEN = pilot_val
         
     def qam_mapping(self,N_symb=10000,Ns=1, data = None, plot=False):
-        iq_uni,b,iq = dc.QAM_gray_encode_bb(N_symb,Ns,self.QAM_MODE,'src', ext_data = data)
+        iq_uni,b,iq = 0,0,0
+        if isinstance(None, type(data)) == False:
+            iq_uni,b,iq = dc.QAM_gray_encode_bb(None,Ns,self.QAM_MODE,'src', ext_data = data)
+        else:    iq_uni,b,iq = dc.QAM_gray_encode_bb(N_symb,Ns,self.QAM_MODE,'src', ext_data = data)
         if plot == True:
             plt.plot(iq_uni.real,iq_uni.imag,'.')
+            plt.title('Constellation')
             plt.xlabel('In-Phase')
             plt.ylabel('Quadrature')
             plt.axis('equal')
@@ -1018,9 +1024,9 @@ class SIMPLEOFDM:
     
     def ofdm_symble(self,qam_data,cplen = 0, plot = False):
         if cplen == 0:
-            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
         else:
-            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,0,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
         if plot == True:
             plt.psd(r, 1024,self.FSMHZ);
             plt.xlabel(r'Normalized Frequency ($\omega/(2\pi)=f/f_s$)')
