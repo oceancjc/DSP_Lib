@@ -16,27 +16,14 @@ from matplotlib import pyplot as plt
 import gc
 
 
-def frange(a,b,s=1.0):
-    ret = [a]
-    n = 1
-    if s > 0:
-        while a+n*s < b:
-            ret.append(a+n*s)
-            n+=1
-    elif s < 0:
-        while a + n*s > b:
-            ret.append(a+n*s)
-            n+=1
-    return map(lambda x: round(x*1e15)/1.0e15,ret)
-        
-
-
-def read_data(path):
-    try:    
-        a = np.loadtxt(path)
-    except:
-        print ("Load data failed,check path and file")
-    return a
+def ber(t,r):
+    t = np.array(t).reshape((-1,1)).astype(int)
+    r = np.array(r).reshape((-1,1)).astype(int)
+    length = min(t.shape[0],r.shape[0])
+    err = np.abs(np.sign(t[:length]-r[:length]))
+    errcount = np.sum(err)
+    return errcount,  errcount /  length
+    
 
 def data_normalize(data_ins,bit,signed = 1):
 
@@ -858,7 +845,7 @@ def peaksearch_v2(sigin,threshold = None,show=False):
 
 def getCorrPeak(tx=[1,2,3], rx=[3,2,1,2,3]):
     r = np.correlate(rx,tx,'full')
-    return np.argmax(r) - len(tx) + 1, np.max(r)
+    return np.argmax(r) - len(tx) + 1, r
 
 class OFDM:
     def __init__(self, num_subcarriers = 64, num_pilots = 8, pilot_val = 3+3j, qam_order = 16):
@@ -1006,6 +993,9 @@ class SIMPLEOFDM:
         self.USED_CARRIERS = used_carriers  
         self.NUM_PIOLOTS = num_pilots
         self.PILOT_PATTEN = pilot_val
+        self.H = 0
+        self.initScrambleStatus = 0
+        self.CPLEN = 0
         
     def qam_mapping(self,N_symb=10000,Ns=1, data = None, plot=False):
         iq_uni,b,iq = 0,0,0
@@ -1022,18 +1012,83 @@ class SIMPLEOFDM:
             plt.show() 
         return iq_uni,b,iq
     
+    def OFDM_tx(self, data, dataCarrierNums, totalCarrierNums, pilotNums, cplen):
+        data = np.array(data)[:len(data) // dataCarrierNums * dataCarrierNums]
+        data = data.reshape(-1,dataCarrierNums)
+        numOfRows = data.shape[0]
+        zeroCarriers = np.zeros((numOfRows, totalCarrierNums - dataCarrierNums))
+        finalData = np.concatenate([data[:,:dataCarrierNums//2],zeroCarriers,data[:,dataCarrierNums//2:]],axis = 1)
+        rawSymble = np.fft.ifft(finalData)
+        if cplen > 0:
+            rawSymble = np.concatenate([rawSymble[:,rawSymble.shape[1]-1-cplen:],rawSymble], axis = 1)
+            
+        rawSymble = rawSymble.reshape(rawSymble.size)
+        self.CPLEN = cplen
+        return rawSymble
+    
+    def OFDM_rx(self, data):
+        data = np.array(data).reshape(-1, self.TOTAL_SUBCARRIERS + self.CPLEN)
+        #Remove CP
+        data = data[:,self.CPLEN:]
+        symble = np.fft.fft(data)
+        symble = np.concatenate([symble[:,:self.USED_CARRIERS//2], symble[:,self.TOTAL_SUBCARRIERS - self.USED_CARRIERS//2:]],axis = 1)
+        return symble.reshape(symble.size)
+    
     def ofdm_symble(self,qam_data,cplen = 0, plot = False):
         if cplen == 0:
             r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
         else:
             r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
         if plot == True:
-            plt.psd(r, 1024,self.FSMHZ);
-            plt.xlabel(r'Normalized Frequency ($\omega/(2\pi)=f/f_s$)')
-            plt.ylim(-140)
+            plt.psd(r, self.TOTAL_SUBCARRIERS + cplen,self.FSMHZ);
+            plt.xlabel(r'Frequency (MHz)')
+            #plt.ylim(-240)
+            plt.show()
+        self.CPLEN = cplen
+        return r
+
+    def ofdm_symbleV2(self,qam_data,cplen = 0, plot = False):
+        if cplen == 0:
+            #r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            r = self.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
+        else:
+            #r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            r = self.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,cplen) * np.sqrt(self.TOTAL_SUBCARRIERS)
+        if plot == True:
+            plt.psd(r, self.TOTAL_SUBCARRIERS + cplen,self.FSMHZ);
+            plt.xlabel(r'Frequency (MHz)')
+            #plt.ylim(-240)
             plt.show()
         return r
     
+    def ofdm_demode(self, data):
+        return self.OFDM_rx(data) / np.sqrt(self.TOTAL_SUBCARRIERS)
+    
+    def channel_equal_estimate(self, patten, preamble):
+        data_preamble, channel = dc.OFDM_rx(preamble, self.USED_CARRIERS, self.TOTAL_SUBCARRIERS, 0, False, 0, alpha=0.95, ht= None)
+        self.H = np.true_divide(patten, data_preamble)
+        return self.H
+    
+    def channel_equal_apply(self, data_frames, H = None):
+        if isinstance(None, type(H)) == True:
+            data_after_equal = (data_frames.reshape(-1, self.USED_CARRIERS)*self.H).reshape(-1,1).flatten()
+        else:
+            data_after_equal = (data_frames.reshape(-1, self.USED_CARRIERS)*H).reshape(-1,1).flatten()
+        return data_after_equal
+    
+    def scramble(self, data, patten = [7,4],initStatus = '1111111'):
+        self.initScrambleStatus = initStatus
+        status = initStatus
+        out = []   
+        for i in data:
+            temp = 0
+            for j in range(len(patten)):    temp ^= int(status[patten[j]-1])
+            out.append(i^temp)
+            status = str(temp) + status[:-1]
+        return np.array(out)
+    
+    def unscramble(self, data, patten = [7,4]):
+        return self.scramble(data, patten, self.initScrambleStatus)
 
 class TxDigital:
     def __init__(self, fs_inMHz, fs_outMHz):
@@ -1072,15 +1127,33 @@ class TxDigital:
         return filtered
     
     def addwindow(self, data, window = 'hanning'):
-        WINDOWLEN = 4096
+        WINDOWLEN = 2048
         shape = data.shape
         if window == 'hanning':    window = signal.hanning(WINDOWLEN).reshape([-1,1])
         else:    return data
         
         window_seq = np.concatenate((window[:WINDOWLEN//2],np.ones(len(data) - WINDOWLEN).reshape([-1,1]),window[WINDOWLEN//2:]))
         return (data.reshape([-1,1])*window_seq).reshape(shape)
-    
 
+class RxDigital:
+    def __init__(self, fs_inMHz, fs_outMHz):
+        self.FS_INMHZ = fs_inMHz
+        self.FSOUTMHZ = fs_outMHz
+    
+    def decimate(self,data_in,deci_rate, start = 0):
+        return np.array([data_in[i] for i in range(int(start), len(data_in), int(deci_rate))])
+        
+    def downsampling(self, data_in, times, wcutoff = 0.6, start_position = 0):
+        sos = signal.butter(87, wcutoff/times*2, 'lp',output='sos')
+        filtered = signal.sosfiltfilt(sos, data_in)
+        y = self.decimate(filtered, times, start_position)       
+        return y
+    
+    def nco_mixer(self, freqMHz, data_in, fs_inMHz = None):
+        length = np.arange(len(data_in))
+        if np.isclose(freqMHz,0) == True:   return data_in
+        if fs_inMHz != None:     return data_in*np.exp(2*np.pi*1j*freqMHz / fs_inMHz * length)
+        else:     return data_in*np.exp(2*np.pi*1j*freqMHz / self.FSOUTMHZ * length)
 '''
 if __name__ == '__main__':
     ofdm = OFDM(num_subcarriers = 1024, num_pilots = 8, pilot_val = 3+3j, qam_order = 16)
