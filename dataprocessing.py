@@ -1026,12 +1026,12 @@ class SIMPLEOFDM:
         self.CPLEN = cplen
         return rawSymble
     
-    def OFDM_rx(self, data):
-        data = np.array(data).reshape(-1, self.TOTAL_SUBCARRIERS + self.CPLEN)
+    def OFDM_rx(self, data, dataCarrierNums, totalCarrierNums, pilotNums, cplen):
+        data = np.array(data).reshape(-1, totalCarrierNums + cplen)
         #Remove CP
-        data = data[:,self.CPLEN:]
+        data = data[:,cplen:]
         symble = np.fft.fft(data)
-        symble = np.concatenate([symble[:,:self.USED_CARRIERS//2], symble[:,self.TOTAL_SUBCARRIERS - self.USED_CARRIERS//2:]],axis = 1)
+        symble = np.concatenate([symble[:,:dataCarrierNums//2], symble[:,totalCarrierNums - dataCarrierNums//2:]],axis = 1)
         return symble.reshape(symble.size)
     
     def ofdm_symble(self,qam_data,cplen = 0, plot = False):
@@ -1062,7 +1062,7 @@ class SIMPLEOFDM:
         return r
     
     def ofdm_demode(self, data):
-        return self.OFDM_rx(data) / np.sqrt(self.TOTAL_SUBCARRIERS)
+        return self.OFDM_rx(data, self.USED_CARRIERS, self.TOTAL_SUBCARRIERS, 0, self.CPLEN) / np.sqrt(self.TOTAL_SUBCARRIERS)
     
     def channel_equal_estimate(self, patten, preamble):
         data_preamble, channel = dc.OFDM_rx(preamble, self.USED_CARRIERS, self.TOTAL_SUBCARRIERS, 0, False, 0, alpha=0.95, ht= None)
