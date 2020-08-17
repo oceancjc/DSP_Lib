@@ -1182,9 +1182,8 @@ class ADC_Eval:
         datalen = len(data)
         n = int( 2 ** np.ceil(np.log2(datalen)) )
         f = np.linspace(0, self.fs // 2, n // 2 + 1)
-        #print(n,len(f),datalen)
         s = np.fft.rfft(data, n) / n * 2
-
+        print(n,len(f),datalen, len(s))
         if plot == True:
             plt.figure
             plt.plot(f/1000, np.abs(s))
@@ -1197,7 +1196,7 @@ class ADC_Eval:
     def realFFTSpectrum(self, data, plot = False, format = 'db'):
         f,s = self.realFFTTransform(data, False)
         s = np.abs(s)
-        if format == 'db':    s = 20*np.log10(s)
+        if format == 'db':    s = 20*np.log10(np.clip(s,1e-20,1e100))
         
         if plot == True:
             plt.figure
@@ -1208,6 +1207,10 @@ class ADC_Eval:
             plt.grid()
             plt.show()       
         return f, s
+    
+    def loadData(self,filename):
+        dataarray = pd.read_csv(filename, header=None).to_numpy()
+        return dataarray.T.tolist()[0]
 
 '''
 if __name__ == '__main__':
