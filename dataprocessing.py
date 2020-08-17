@@ -983,9 +983,10 @@ class OFDM:
         # transform the constellation point into the bit groups
         return np.vstack([self.demapping_table[C] for C in hardDecision]), hardDecision
     
-from sk_dsp_comm import digitalcom as dc
+
 class SIMPLEOFDM:
     def __init__(self,fsMHz = 245.76, total_carriers = 64, used_carriers = 32, num_pilots = 8, pilot_val = 3+3j, qam_order = 16):
+        from sk_dsp_comm import digitalcom as dc
         if qam_order in (2, 4, 16, 64, 256):    self.QAM_MODE = qam_order  
         else:  self.QAM_MODE = 16
         self.FSMHZ = fsMHz
@@ -1154,6 +1155,60 @@ class RxDigital:
         if np.isclose(freqMHz,0) == True:   return data_in
         if fs_inMHz != None:     return data_in*np.exp(2*np.pi*1j*freqMHz / fs_inMHz * length)
         else:     return data_in*np.exp(2*np.pi*1j*freqMHz / self.FSOUTMHZ * length)
+
+class ADC_Eval:
+    def __init__(self, fs = 1000):
+        self.fs = fs
+
+    def realFFTTransform(self, data, plot = False):
+        '''
+        Do raw FFT transfrom to real data, return frequency and raw fft complex values 
+        Parameters
+        ----------
+        data : list
+            Numbers to be FFT transformed
+        plot : BOOL, optional
+            If plot the FFT result. The default is False.
+        format : 'linear' or 'db', optional
+            Decide the FFT return the value in linear unit or dB. The default is 'db'.
+
+        Returns
+        -------
+        f_Hz : list
+            frequency in Hz.
+        s : list
+            The raw FFT result.
+        '''
+        datalen = len(data)
+        n = int( 2 ** np.ceil(np.log2(datalen)) )
+        f = np.linspace(0, self.fs // 2, n // 2 + 1)
+        #print(n,len(f),datalen)
+        s = np.fft.rfft(data, n) / n * 2
+
+        if plot == True:
+            plt.figure
+            plt.plot(f/1000, np.abs(s))
+            plt.xlabel('Frequency (kHz)')
+            plt.ylabel('Amplitude')
+            plt.grid()
+            plt.show()
+        return f,s
+    
+    def realFFTSpectrum(self, data, plot = False, format = 'db'):
+        f,s = self.realFFTTransform(data, False)
+        s = np.abs(s)
+        if format == 'db':    s = 20*np.log10(s)
+        
+        if plot == True:
+            plt.figure
+            plt.plot(f/1000, s)
+            plt.xlabel('Frequency (kHz)')
+            if format == 'db':    plt.ylabel('Amplitude (dBFs)')
+            else:                 plt.ylabel('Amplitude')
+            plt.grid()
+            plt.show()       
+        return f, s
+
 '''
 if __name__ == '__main__':
     ofdm = OFDM(num_subcarriers = 1024, num_pilots = 8, pilot_val = 3+3j, qam_order = 16)
