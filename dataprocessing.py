@@ -1160,6 +1160,7 @@ class ADC_Eval:
     def __init__(self, fs = 1000):
         self.fs = fs
         self.rawFFTData = 0
+        self.SpectrumDataDB = 0
         self.freqHz = 0
 
     def realFFTTransform(self, data, plot = False):
@@ -1200,7 +1201,8 @@ class ADC_Eval:
     def realFFTSpectrum(self, data, plot = False, format = 'db'):
         f,s = self.realFFTTransform(data, False)
         s = np.abs(s)
-        if format == 'db':    s = 20*np.log10(np.clip(s,1e-20,1e100))
+        self.SpectrumDataDB = 20*np.log10(np.clip(s,1e-10,1e100))
+        if format == 'db':    s = self.SpectrumDataDB
         
         if plot == True:
             plt.figure
@@ -1216,13 +1218,13 @@ class ADC_Eval:
         dataarray = pd.read_csv(filename, header=None).to_numpy()
         return dataarray.T.tolist()[0]
     
-    def fundPowerSingleTone(self, freqHz, spectrumData):
-        peak = max(spectrumData)
-        if type(spectrumData) == list:    return freqHz[spectrumData.index(peak)], peak
-        else:                             return freqHz[np.argmax(spectrumData)], peak   
+    def fundPowerSingleTone(self, freqHz, spectrumDataDB):
+        peak = max(spectrumDataDB)
+        if type(spectrumDataDB) == list:    return freqHz[spectrumDataDB.index(peak)], peak
+        else:                               return freqHz[np.argmax(spectrumDataDB)], peak   
     
-    def harmonicMeasure(self, freqHz, spectrumData, highestOrder = 6):
-        fFoundHz, peakDB = self.fundPowerSingleTone(freqHz, spectrumData) 
+    def harmonicMeasure(self, freqHz, spectrumDataDB, highestOrder = 6):
+        fFoundHz, peakDB = self.fundPowerSingleTone(freqHz, spectrumDataDB) 
         freqHz = freqHz.tolist()
         freqs = [i*fFoundHz for i in range(1,highestOrder+1)]
         NYQZONE = self.fs / 2
@@ -1230,28 +1232,29 @@ class ADC_Eval:
             n = freqs[i] // NYQZONE
             if n % 2 == 0:    freqs[i] %= NYQZONE
             else:             freqs[i] = NYQZONE - (freqs[i] % NYQZONE)
-        harmonics = [peakDB] + [spectrumData[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
+        harmonics = [peakDB] + [spectrumDataDB[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
         return freqs,harmonics
     
-    def sfdr(self, freqHz, spectrumData):
-        f, harmonics = self.harmonicMeasure(freqHz, spectrumData, 6)
+    def sfdr(self, freqHz, spectrumDataDB):
+        f, harmonics = self.harmonicMeasure(freqHz, spectrumDataDB, 6)
         return harmonics[0] - max(harmonics[1:])
         
-    def thd(self, freqHz, spectrumData):
-        f, harmonics = self.harmonicMeasure(freqHz, spectrumData, 6)
+    def thd(self, freqHz, spectrumDataDB):
+        f, harmonics = self.harmonicMeasure(freqHz, spectrumDataDB, 6)
         totalDistortion = 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
         return harmonics[0] - totalDistortion
     
-    def sinad(self, data):
-        pwr_time = np.sum(np.array(data)**2) / len(data)
-        f,s = self.realFFTSpectrum(data,False,'linear')
-        pwr_freq = np.sum(s[1:]**2)  #remove DC power
-        pwr_signal = max(s)**2
+    def sinad(self):
+        #pwr_time = np.sum(np.array(data)**2) / len(data)
+        pwr_fft = np.abs(self.rawFFTData)**2
+        pwr_freq = np.sum( pwr_fft[1:] )  #remove DC power
+        pwr_signal = max(pwr_fft[1:])
         sinad = 10*np.log10(pwr_signal / (pwr_freq - pwr_signal))
-        print(pwr_time,pwr_freq,pwr_signal,snr)
+        #print(pwr_time,pwr_freq,pwr_signal,sinad)
         return sinad
         
-
+    def enob(self):
+        return np.round((self.sinad() - 1.76) / 6.02, 2)
         
 '''
 if __name__ == '__main__':
