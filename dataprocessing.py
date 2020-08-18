@@ -1263,6 +1263,9 @@ class ADC_Eval:
         reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
         '''
         return -10*np.log10( 10**(-self.sinad() / 10) - 10**(-self.thd() / 10) )
+    
+    def noisefloor(self):
+        return -self.snr() - 10*np.log10(self.fs / 2)
         
 '''
 if __name__ == '__main__':
