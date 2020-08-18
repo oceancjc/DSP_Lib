@@ -1159,6 +1159,8 @@ class RxDigital:
 class ADC_Eval:
     def __init__(self, fs = 1000):
         self.fs = fs
+        self.rawFFTData = 0
+        self.freqHz = 0
 
     def realFFTTransform(self, data, plot = False):
         '''
@@ -1191,6 +1193,8 @@ class ADC_Eval:
             plt.ylabel('Amplitude')
             plt.grid()
             plt.show()
+        
+        self.freqHz, self.rawFFTData = f,s
         return f,s
     
     def realFFTSpectrum(self, data, plot = False, format = 'db'):
@@ -1211,7 +1215,25 @@ class ADC_Eval:
     def loadData(self,filename):
         dataarray = pd.read_csv(filename, header=None).to_numpy()
         return dataarray.T.tolist()[0]
-
+    
+    def fundPowerSingleTone(self, freqHz, spectrumData):
+        peak = max(spectrumData)
+        if type(spectrumData) == list:    return freqHz[spectrumData.index(peak)], peak
+        else:                             return freqHz[np.argmax(spectrumData)], peak   
+    
+    def harmonicMeasure(self, freqHz, spectrumData, highestOrder = 6):
+        fFoundHz, peakDB = self.fundPowerSingleTone(freqHz, spectrumData) 
+        freqHz = freqHz.tolist()
+        freqs = [i*fFoundHz for i in range(1,highestOrder+1)]
+        NYQZONE = self.fs / 2
+        for i in range(1,len(freqs)):
+            n = freqs[i] // NYQZONE
+            if n % 2 == 0:    freqs[i] %= NYQZONE
+            else:             freqs[i] = NYQZONE - (freqs[i] % NYQZONE)
+        harmonics = [peakDB] + [spectrumData[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
+        return freqs,harmonics
+        
+        
 '''
 if __name__ == '__main__':
     ofdm = OFDM(num_subcarriers = 1024, num_pilots = 8, pilot_val = 3+3j, qam_order = 16)
