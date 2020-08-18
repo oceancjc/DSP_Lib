@@ -1161,6 +1161,7 @@ class ADC_Eval:
         self.fs = fs
         self.rawFFTData = 0
         self.SpectrumDataDB = 0
+        self.DcPwrDB = 0
         self.freqHz = 0
 
     def realFFTTransform(self, data, plot = False):
@@ -1202,6 +1203,7 @@ class ADC_Eval:
         f,s = self.realFFTTransform(data, False)
         s = np.abs(s)
         self.SpectrumDataDB = 20*np.log10(np.clip(s,1e-10,1e100))
+        self.DcPwrDB = self.SpectrumDataDB[0]
         if format == 'db':    s = self.SpectrumDataDB
         
         if plot == True:
@@ -1235,12 +1237,12 @@ class ADC_Eval:
         harmonics = [peakDB] + [spectrumDataDB[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
         return freqs,harmonics
     
-    def sfdr(self, freqHz, spectrumDataDB):
-        f, harmonics = self.harmonicMeasure(freqHz, spectrumDataDB, 6)
+    def sfdr(self):
+        f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
         return harmonics[0] - max(harmonics[1:])
         
-    def thd(self, freqHz, spectrumDataDB):
-        f, harmonics = self.harmonicMeasure(freqHz, spectrumDataDB, 6)
+    def thd(self):
+        f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
         totalDistortion = 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
         return harmonics[0] - totalDistortion
     
@@ -1255,6 +1257,12 @@ class ADC_Eval:
         
     def enob(self):
         return np.round((self.sinad() - 1.76) / 6.02, 2)
+    
+    def snr(self):
+        '''
+        reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
+        '''
+        return -10*np.log10( 10**(-self.sinad() / 10) - 10**(-self.thd() / 10) )
         
 '''
 if __name__ == '__main__':
