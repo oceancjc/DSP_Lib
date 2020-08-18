@@ -1232,7 +1232,26 @@ class ADC_Eval:
             else:             freqs[i] = NYQZONE - (freqs[i] % NYQZONE)
         harmonics = [peakDB] + [spectrumData[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
         return freqs,harmonics
+    
+    def sfdr(self, freqHz, spectrumData):
+        f, harmonics = self.harmonicMeasure(freqHz, spectrumData, 6)
+        return harmonics[0] - max(harmonics[1:])
         
+    def thd(self, freqHz, spectrumData):
+        f, harmonics = self.harmonicMeasure(freqHz, spectrumData, 6)
+        totalDistortion = 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
+        return harmonics[0] - totalDistortion
+    
+    def sinad(self, data):
+        pwr_time = np.sum(np.array(data)**2) / len(data)
+        f,s = self.realFFTSpectrum(data,False,'linear')
+        pwr_freq = np.sum(s[1:]**2)  #remove DC power
+        pwr_signal = max(s)**2
+        sinad = 10*np.log10(pwr_signal / (pwr_freq - pwr_signal))
+        print(pwr_time,pwr_freq,pwr_signal,snr)
+        return sinad
+        
+
         
 '''
 if __name__ == '__main__':
