@@ -1265,6 +1265,9 @@ class ADC_Eval:
         return -10*np.log10( 10**(-self.sinad() / 10) - 10**(-self.thd() / 10) )
     
     def noisefloor(self):
+        '''
+        reference: https://www.analog.com/cn/technical-articles/noise-spectral-density.html
+        '''
         return -self.snr() - 10*np.log10(self.fs / 2)
         
 '''
