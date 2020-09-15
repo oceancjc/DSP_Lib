@@ -31,7 +31,7 @@ def get_input(string):
         except:
             print('Please Enter Correct number!')
 
-rm = visa.ResourceManager('@py')
+rm = visa.ResourceManager()
 rm.ignore_warning(pyvisa.constants.VI_SUCCESS_MAX_CNT)
 print(rm.list_resources())
 vpp43 = rm.visalib
@@ -582,9 +582,69 @@ class PWR_device(object):
         self.pwr.write(':SOURce:VOLTage:LEVel:IMMediate:STEP:INCRement %f' %step)
         
         
+class M3458A_device(object):
+    def __init__(self,ip=''):
+        global rm,session    
+        print('Step 1\t Connecting 3458A ...\n')
+        if ip != '':    self.__addr = ip
+        self.__addr = 'GPIB0::22::INSTR'
+        try:  
+
+            self.Meter = rm.open_resource(self.__addr)
+            print('[Info]\t 3458A Connect Success ...')
+            self.device_found = 0
+            self.reset()
+            self.Meter.timeout = 10000
+        except:
+            self.device_found = -1
+            print('[ERR]\t 3458A not found \n')
+            
+    def reset(self):
+        self.Meter.write(r'RESET')
+        self.Meter.write(r'PRESET DIG;MFORMAT DINT;OFORMAT ASCII;MEM FIFO')   
+        self.Meter.write('APER 2E-6;TRIG AUTO')
+        self.Meter.write('DCV AUTO')
+    
+    def preset(self):
+        self.Meter.write(r'PRESET;TRIG AUTO')
         
+    def IDGet(self):
+        answer = self.Meter.query('ID?')
+        return answer.split('\r\n')[0]
+    
+    def DCvoltageMeasureEnable(self):
+        self.Meter.write('DCV AUTO')
         
+    def ohmMeasureEnable(self):
+        self.Meter.write('OHM')
+    
+    def ACvoltageMeasureEnable(self):
+        self.Meter.write('ACV')
         
+    def DCcurrentMeasureEnable(self):
+        self.Meter.write('DCI')
+        
+    def ACcurrentMeasureEnable(self):
+        self.Meter.write('ACI')
+        
+    def freqMeasureEnable(self):
+        self.Meter.write("FSOURCE ACDCV")
+        self.Meter.write('FREQ AUTO .0001')
+        
+    def errClear(self):
+        cnt = 10
+        while True:
+            err = int(self.Meter.query('ERRSTR?').split(',')[0])
+            if err == 0:    return err
+            cnt-=1
+        return err
+    
+    def errCheck(self):
+        return int(self.Meter.query('ERRSTR?').split(',')[0])
+    
+    def valueRead(self):
+        return float(self.Meter.read())
+    
         
 #import smtplib  
 #from email.mime.multipart import MIMEMultipart  
@@ -722,12 +782,11 @@ class PWR_device(object):
 #    if code != 235: 
 #        raise SMTPAuthenticationError(code, response) 
 if __name__ == '__main__':
-    n = N9030A_device('192.168.1.102')
+    n = M3458A_device()
     n.preset()
-    #n.set_freq_span_MHz(5820,120)
-    n.initACPR(1,2540,120)
-    n.setACPRCarrier(1,0,20,0)
-    n.setACPROffsets([20,40],[20]*2,[0]*2)
+    for i in range(10):
+        print(n.valueRead())
+
     
     #n.set_single_tone_MHz(3570,-18.41+6.8)
     
