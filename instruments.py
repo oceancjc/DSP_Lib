@@ -33,6 +33,7 @@ def get_input(string):
 
 rm = visa.ResourceManager()
 rm.ignore_warning(pyvisa.constants.VI_SUCCESS_MAX_CNT)
+rm.timeout = 2
 print(rm.list_resources())
 vpp43 = rm.visalib
 session,state=vpp43.open_default_resource_manager()
@@ -612,8 +613,15 @@ class M3458A_device(object):
         answer = self.Meter.query('ID?')
         return answer.split('\r\n')[0]
     
-    def DCvoltageMeasureEnable(self):
-        self.Meter.write('DCV AUTO')
+    def DCvoltageMeasureEnable(self, range_V = 0, resolution = 0.00001):
+        if range_V == 0:        self.Meter.write('DCV AUTO')
+        else:   self.Meter.write('DCV {} {}'.format(range_V,resolution))
+        
+    def nplcSet(self, nplc = 1):
+        self.Meter.write('NPLC {}'.format(nplc))
+        
+    def nplcGet(self):
+        return float(self.Meter.query('NPLC?').split(',')[0])
         
     def ohmMeasureEnable(self):
         self.Meter.write('OHM')
@@ -630,7 +638,10 @@ class M3458A_device(object):
     def freqMeasureEnable(self):
         self.Meter.write("FSOURCE ACDCV")
         self.Meter.write('FREQ AUTO .0001')
-        
+    
+    def autoZeroEnableSet(self, enable = False):
+        if enable == False:    self.Meter.write("AZERO OFF")
+        else:    self.Meter.write("AZERO ON")
     def errClear(self):
         cnt = 10
         while True:
@@ -784,8 +795,8 @@ class M3458A_device(object):
 if __name__ == '__main__':
     n = M3458A_device()
     n.preset()
-    for i in range(10):
-        print(n.valueRead())
+    # for i in range(10):
+    #     print(n.valueRead())
 
     
     #n.set_single_tone_MHz(3570,-18.41+6.8)
