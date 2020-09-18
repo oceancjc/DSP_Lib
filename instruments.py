@@ -603,7 +603,7 @@ class M3458A_device(object):
     def reset(self):
         self.Meter.write(r'RESET')
         self.Meter.write(r'PRESET DIG;MFORMAT DINT;OFORMAT ASCII;MEM FIFO')   
-        self.Meter.write('APER 2E-6;TRIG AUTO')
+        self.Meter.write('APER 2E-6;TRIG AUTO;END ON')
         self.Meter.write('DCV AUTO')
     
     def preset(self):
@@ -795,8 +795,10 @@ class M3458A_device(object):
 if __name__ == '__main__':
     n = M3458A_device()
     n.preset()
-    # for i in range(10):
-    #     print(n.valueRead())
+    n.nplcSet(20)
+    n.DCvoltageMeasureEnable(10,0.00001)
+    for i in range(10):
+        print(n.valueRead())
 
     
     #n.set_single_tone_MHz(3570,-18.41+6.8)
