@@ -1237,10 +1237,17 @@ class ADC_Eval:
         harmonics = [peakDB] + [spectrumDataDB[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
         return freqs,harmonics
     
-    def sfdr(self):
+    def sfdr(self, withHarmoics = True):
         f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
-        return harmonics[0] - max(harmonics[1:])
+        if withHarmoics is True:    return harmonics[0] - max(harmonics[1:])
+        freqListHz = self.freqHz.tolist()
+        harmoicIndex_s = [freqListHz.index(i) for i in f]
         
+        SpectrumDataDB_s = self.SpectrumDataDB.tolist()
+        for i in harmoicIndex_s:    SpectrumDataDB_s[i] = min(self.SpectrumDataDB)
+        sortedSpectrumDataDB_s = SpectrumDataDB_s[1:].sort(reverse = True)
+        return sortedSpectrumDataDB_s[0] - sortedSpectrumDataDB_s[1]
+            
     def thd(self):
         f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
         totalDistortion = 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
