@@ -1163,6 +1163,9 @@ class ADC_Eval:
         self.SpectrumDataDB = 0
         self.DcPwrDB = 0
         self.freqHz = 0
+        
+        self.__fundamentalTonePwrDB = 0
+        self.__fundamentalToneFreqHz = 0
 
     def realFFTTransform(self, data, plot = False):
         '''
@@ -1222,8 +1225,13 @@ class ADC_Eval:
     
     def fundPowerSingleTone(self, freqHz, spectrumDataDB):
         peak = max(spectrumDataDB)
-        if type(spectrumDataDB) == list:    return freqHz[spectrumDataDB.index(peak)], peak
-        else:                               return freqHz[np.argmax(spectrumDataDB)], peak   
+        self.__fundamentalTonePwrDB = peak
+        if type(spectrumDataDB) == list:    
+            self.__fundamentalToneFreqHz = freqHz[spectrumDataDB.index(peak)]
+            return freqHz[spectrumDataDB.index(peak)], peak
+        else:     
+            self.__fundamentalToneFreqHz = freqHz[np.argmax(spectrumDataDB)]
+            return freqHz[np.argmax(spectrumDataDB)], peak   
     
     def harmonicMeasure(self, freqHz, spectrumDataDB, highestOrder = 6):
         fFoundHz, peakDB = self.fundPowerSingleTone(freqHz, spectrumDataDB) 
@@ -1237,6 +1245,10 @@ class ADC_Eval:
         harmonics = [peakDB] + [spectrumDataDB[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
         return freqs,harmonics
     
+    def totalHarmonicPwr(self, freqHz, spectrumDataDB, highestOrder = 6):
+        f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, highestOrder)
+        return 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
+        
     def sfdr(self, withHarmoics = True):
         f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
         if withHarmoics is True:    return harmonics[0] - max(harmonics[1:])
@@ -1249,9 +1261,8 @@ class ADC_Eval:
         return sortedSpectrumDataDB_s[0] - sortedSpectrumDataDB_s[1]
             
     def thd(self):
-        f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
-        totalDistortion = 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
-        return harmonics[0] - totalDistortion
+        totalDistortion = self.totalHarmonicPwr(self.freqHz, self.SpectrumDataDB, 6)
+        return self.__fundamentalTonePwrDB - totalDistortion
     
     def sinad(self):
         #pwr_time = np.sum(np.array(data)**2) / len(data)
