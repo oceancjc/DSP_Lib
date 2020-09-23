@@ -621,7 +621,7 @@ class M3458A_device(object):
         self.Meter.write('NPLC {}'.format(nplc))
         
     def nplcGet(self):
-        return float(self.Meter.query('NPLC?').split(',')[0])
+        return float(self.Meter.query('NPLC?').split('\r\n')[0])
         
     def ohmMeasureEnable(self):
         self.Meter.write('OHM')
@@ -796,6 +796,7 @@ if __name__ == '__main__':
     n = M3458A_device()
     n.preset()
     n.nplcSet(20)
+    print(n.nplcGet())
     n.DCvoltageMeasureEnable(10,0.00001)
     for i in range(10):
         print(n.valueRead())
