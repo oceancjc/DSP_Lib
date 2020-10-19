@@ -656,7 +656,16 @@ class M3458A_device(object):
     def valueRead(self):
         return float(self.Meter.read())
     
-        
+    def autoCal(self, item='DCV'):  
+        if item.upper() in ['DCV','AC','OHMS','ALL']:
+            self.Meter.write("ACAL {}".format(item.upper()))
+        else:
+            print('Item set Error')
+
+    def lFilterSet(self, enable = True):
+        if enable == True:    self.Meter.write('LFILTER ON')
+        else:                 self.Meter.write('LFILTER OFF')
+    
 #import smtplib  
 #from email.mime.multipart import MIMEMultipart  
 #from email.mime.text import MIMEText  
