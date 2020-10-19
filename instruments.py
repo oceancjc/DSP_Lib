@@ -657,10 +657,16 @@ class M3458A_device(object):
         return float(self.Meter.read())
     
     def autoCal(self, item='DCV'):  
-        if item.upper() in ['DCV','AC','OHMS','ALL']:
-            self.Meter.write("ACAL {}".format(item.upper()))
-        else:
-            print('Item set Error')
+        try:
+            if item.upper() in ['DCV','AC','OHMS','ALL']:
+                self.Meter.write("ACAL {}".format(item.upper()))
+            else:
+                print('Item set Error')
+        except:
+            print('Please wait until Calibration finishes')
+            
+    def autoTest(self):
+        self.Meter.write("TEST")
 
     def lFilterSet(self, enable = True):
         if enable == True:    self.Meter.write('LFILTER ON')
