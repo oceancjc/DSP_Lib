@@ -602,9 +602,10 @@ class M3458A_device(object):
             
     def reset(self):
         self.Meter.write(r'RESET')
-        self.Meter.write(r'PRESET DIG;MFORMAT DINT;OFORMAT ASCII;MEM FIFO')   
+        self.Meter.write(r'PRESET NORM;MFORMAT DINT;OFORMAT ASCII;MEM FIFO')   
         self.Meter.write('APER 2E-6;TRIG AUTO;END ON')
         self.Meter.write('DCV AUTO')
+        self.Meter.write('NDIG 8');
     
     def preset(self):
         self.Meter.write(r'PRESET;TRIG AUTO')
@@ -625,23 +626,30 @@ class M3458A_device(object):
         
     def ohmMeasureEnable(self):
         self.Meter.write('OHM')
+        self.Meter.query('OPT?')
     
     def ACvoltageMeasureEnable(self):
         self.Meter.write('ACV')
+        self.Meter.query('OPT?')
         
     def DCcurrentMeasureEnable(self):
         self.Meter.write('DCI')
+        self.Meter.query('OPT?')
         
     def ACcurrentMeasureEnable(self):
         self.Meter.write('ACI')
+        self.Meter.query('OPT?')
         
     def freqMeasureEnable(self):
         self.Meter.write("FSOURCE ACDCV")
         self.Meter.write('FREQ AUTO .0001')
+        self.Meter.query('OPT?')
     
     def autoZeroEnableSet(self, enable = False):
         if enable == False:    self.Meter.write("AZERO OFF")
         else:    self.Meter.write("AZERO ON")
+        self.Meter.query('OPT?')
+        
     def errClear(self):
         cnt = 10
         while True:
@@ -671,6 +679,12 @@ class M3458A_device(object):
     def lFilterSet(self, enable = True):
         if enable == True:    self.Meter.write('LFILTER ON')
         else:                 self.Meter.write('LFILTER OFF')
+        self.Meter.query('OPT?')
+        
+    def fixInputResistorSet(self, enable=True):
+        if enable == True:    self.Meter.write('FIXEDZ ON')
+        else:                 self.Meter.write('FIXEDZ OFF')
+        self.Meter.query('OPT?')
     
 #import smtplib  
 #from email.mime.multipart import MIMEMultipart  
