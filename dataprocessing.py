@@ -982,113 +982,116 @@ class OFDM:
 
         # transform the constellation point into the bit groups
         return np.vstack([self.demapping_table[C] for C in hardDecision]), hardDecision
-    
-from sk_dsp_comm import digitalcom as dc
-class SIMPLEOFDM:
-    def __init__(self,fsMHz = 245.76, total_carriers = 64, used_carriers = 32, num_pilots = 8, pilot_val = 3+3j, qam_order = 16):
-        if qam_order in (2, 4, 16, 64, 256):    self.QAM_MODE = qam_order  
-        else:  self.QAM_MODE = 16
-        self.FSMHZ = fsMHz
-        self.TOTAL_SUBCARRIERS = total_carriers
-        self.USED_CARRIERS = used_carriers  
-        self.NUM_PIOLOTS = num_pilots
-        self.PILOT_PATTEN = pilot_val
-        self.H = 0
-        self.initScrambleStatus = 0
-        self.CPLEN = 0
-        
-    def qam_mapping(self,N_symb=10000,Ns=1, data = None, plot=False):
-        iq_uni,b,iq = 0,0,0
-        if isinstance(None, type(data)) == False:
-            iq_uni,b,iq = dc.QAM_gray_encode_bb(None,Ns,self.QAM_MODE,'src', ext_data = data)
-        else:    iq_uni,b,iq = dc.QAM_gray_encode_bb(N_symb,Ns,self.QAM_MODE,'src', ext_data = data)
-        if plot == True:
-            plt.plot(iq_uni.real,iq_uni.imag,'.')
-            plt.title('Constellation')
-            plt.xlabel('In-Phase')
-            plt.ylabel('Quadrature')
-            plt.axis('equal')
-            plt.grid()
-            plt.show() 
-        return iq_uni,b,iq
-    
-    def OFDM_tx(self, data, dataCarrierNums, totalCarrierNums, pilotNums, cplen):
-        data = np.array(data)[:len(data) // dataCarrierNums * dataCarrierNums]
-        data = data.reshape(-1,dataCarrierNums)
-        numOfRows = data.shape[0]
-        zeroCarriers = np.zeros((numOfRows, totalCarrierNums - dataCarrierNums))
-        finalData = np.concatenate([data[:,:dataCarrierNums//2],zeroCarriers,data[:,dataCarrierNums//2:]],axis = 1)
-        rawSymble = np.fft.ifft(finalData)
-        if cplen > 0:
-            rawSymble = np.concatenate([rawSymble[:,rawSymble.shape[1]-1-cplen:],rawSymble], axis = 1)
-            
-        rawSymble = rawSymble.reshape(rawSymble.size)
-        self.CPLEN = cplen
-        return rawSymble
-    
-    def OFDM_rx(self, data, dataCarrierNums, totalCarrierNums, pilotNums, cplen):
-        data = np.array(data).reshape(-1, totalCarrierNums + cplen)
-        #Remove CP
-        data = data[:,cplen:]
-        symble = np.fft.fft(data)
-        symble = np.concatenate([symble[:,:dataCarrierNums//2], symble[:,totalCarrierNums - dataCarrierNums//2:]],axis = 1)
-        return symble.reshape(symble.size)
-    
-    def ofdm_symble(self,qam_data,cplen = 0, plot = False):
-        if cplen == 0:
-            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
-        else:
-            r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
-        if plot == True:
-            plt.psd(r, self.TOTAL_SUBCARRIERS + cplen,self.FSMHZ);
-            plt.xlabel(r'Frequency (MHz)')
-            #plt.ylim(-240)
-            plt.show()
-        self.CPLEN = cplen
-        return r
 
-    def ofdm_symbleV2(self,qam_data,cplen = 0, plot = False):
-        if cplen == 0:
-            #r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
-            r = self.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
-        else:
-            #r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
-            r = self.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,cplen) * np.sqrt(self.TOTAL_SUBCARRIERS)
-        if plot == True:
-            plt.psd(r, self.TOTAL_SUBCARRIERS + cplen,self.FSMHZ);
-            plt.xlabel(r'Frequency (MHz)')
-            #plt.ylim(-240)
-            plt.show()
-        return r
+try:    
+    from sk_dsp_comm import digitalcom as dc
+    class SIMPLEOFDM:
+        def __init__(self,fsMHz = 245.76, total_carriers = 64, used_carriers = 32, num_pilots = 8, pilot_val = 3+3j, qam_order = 16):
+            if qam_order in (2, 4, 16, 64, 256):    self.QAM_MODE = qam_order  
+            else:  self.QAM_MODE = 16
+            self.FSMHZ = fsMHz
+            self.TOTAL_SUBCARRIERS = total_carriers
+            self.USED_CARRIERS = used_carriers  
+            self.NUM_PIOLOTS = num_pilots
+            self.PILOT_PATTEN = pilot_val
+            self.H = 0
+            self.initScrambleStatus = 0
+            self.CPLEN = 0
+            
+        def qam_mapping(self,N_symb=10000,Ns=1, data = None, plot=False):
+            iq_uni,b,iq = 0,0,0
+            if isinstance(None, type(data)) == False:
+                iq_uni,b,iq = dc.QAM_gray_encode_bb(None,Ns,self.QAM_MODE,'src', ext_data = data)
+            else:    iq_uni,b,iq = dc.QAM_gray_encode_bb(N_symb,Ns,self.QAM_MODE,'src', ext_data = data)
+            if plot == True:
+                plt.plot(iq_uni.real,iq_uni.imag,'.')
+                plt.title('Constellation')
+                plt.xlabel('In-Phase')
+                plt.ylabel('Quadrature')
+                plt.axis('equal')
+                plt.grid()
+                plt.show() 
+            return iq_uni,b,iq
+        
+        def OFDM_tx(self, data, dataCarrierNums, totalCarrierNums, pilotNums, cplen):
+            data = np.array(data)[:len(data) // dataCarrierNums * dataCarrierNums]
+            data = data.reshape(-1,dataCarrierNums)
+            numOfRows = data.shape[0]
+            zeroCarriers = np.zeros((numOfRows, totalCarrierNums - dataCarrierNums))
+            finalData = np.concatenate([data[:,:dataCarrierNums//2],zeroCarriers,data[:,dataCarrierNums//2:]],axis = 1)
+            rawSymble = np.fft.ifft(finalData)
+            if cplen > 0:
+                rawSymble = np.concatenate([rawSymble[:,rawSymble.shape[1]-1-cplen:],rawSymble], axis = 1)
+                
+            rawSymble = rawSymble.reshape(rawSymble.size)
+            self.CPLEN = cplen
+            return rawSymble
+        
+        def OFDM_rx(self, data, dataCarrierNums, totalCarrierNums, pilotNums, cplen):
+            data = np.array(data).reshape(-1, totalCarrierNums + cplen)
+            #Remove CP
+            data = data[:,cplen:]
+            symble = np.fft.fft(data)
+            symble = np.concatenate([symble[:,:dataCarrierNums//2], symble[:,totalCarrierNums - dataCarrierNums//2:]],axis = 1)
+            return symble.reshape(symble.size)
+        
+        def ofdm_symble(self,qam_data,cplen = 0, plot = False):
+            if cplen == 0:
+                r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            else:
+                r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            if plot == True:
+                plt.psd(r, self.TOTAL_SUBCARRIERS + cplen,self.FSMHZ);
+                plt.xlabel(r'Frequency (MHz)')
+                #plt.ylim(-240)
+                plt.show()
+            self.CPLEN = cplen
+            return r
     
-    def ofdm_demode(self, data):
-        return self.OFDM_rx(data, self.USED_CARRIERS, self.TOTAL_SUBCARRIERS, 0, self.CPLEN) / np.sqrt(self.TOTAL_SUBCARRIERS)
-    
-    def channel_equal_estimate(self, patten, preamble):
-        data_preamble, channel = dc.OFDM_rx(preamble, self.USED_CARRIERS, self.TOTAL_SUBCARRIERS, 0, False, 0, alpha=0.95, ht= None)
-        self.H = np.true_divide(patten, data_preamble)
-        return self.H
-    
-    def channel_equal_apply(self, data_frames, H = None):
-        if isinstance(None, type(H)) == True:
-            data_after_equal = (data_frames.reshape(-1, self.USED_CARRIERS)*self.H).reshape(-1,1).flatten()
-        else:
-            data_after_equal = (data_frames.reshape(-1, self.USED_CARRIERS)*H).reshape(-1,1).flatten()
-        return data_after_equal
-    
-    def scramble(self, data, patten = [7,4],initStatus = '1111111'):
-        self.initScrambleStatus = initStatus
-        status = initStatus
-        out = []   
-        for i in data:
-            temp = 0
-            for j in range(len(patten)):    temp ^= int(status[patten[j]-1])
-            out.append(i^temp)
-            status = str(temp) + status[:-1]
-        return np.array(out)
-    
-    def unscramble(self, data, patten = [7,4]):
-        return self.scramble(data, patten, self.initScrambleStatus)
+        def ofdm_symbleV2(self,qam_data,cplen = 0, plot = False):
+            if cplen == 0:
+                #r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,False,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
+                r = self.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,0) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            else:
+                #r = dc.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,True,int(cplen)) * np.sqrt(self.TOTAL_SUBCARRIERS)
+                r = self.OFDM_tx(qam_data,self.USED_CARRIERS,self.TOTAL_SUBCARRIERS,self.NUM_PIOLOTS,cplen) * np.sqrt(self.TOTAL_SUBCARRIERS)
+            if plot == True:
+                plt.psd(r, self.TOTAL_SUBCARRIERS + cplen,self.FSMHZ);
+                plt.xlabel(r'Frequency (MHz)')
+                #plt.ylim(-240)
+                plt.show()
+            return r
+        
+        def ofdm_demode(self, data):
+            return self.OFDM_rx(data, self.USED_CARRIERS, self.TOTAL_SUBCARRIERS, 0, self.CPLEN) / np.sqrt(self.TOTAL_SUBCARRIERS)
+        
+        def channel_equal_estimate(self, patten, preamble):
+            data_preamble, channel = dc.OFDM_rx(preamble, self.USED_CARRIERS, self.TOTAL_SUBCARRIERS, 0, False, 0, alpha=0.95, ht= None)
+            self.H = np.true_divide(patten, data_preamble)
+            return self.H
+        
+        def channel_equal_apply(self, data_frames, H = None):
+            if isinstance(None, type(H)) == True:
+                data_after_equal = (data_frames.reshape(-1, self.USED_CARRIERS)*self.H).reshape(-1,1).flatten()
+            else:
+                data_after_equal = (data_frames.reshape(-1, self.USED_CARRIERS)*H).reshape(-1,1).flatten()
+            return data_after_equal
+        
+        def scramble(self, data, patten = [7,4],initStatus = '1111111'):
+            self.initScrambleStatus = initStatus
+            status = initStatus
+            out = []   
+            for i in data:
+                temp = 0
+                for j in range(len(patten)):    temp ^= int(status[patten[j]-1])
+                out.append(i^temp)
+                status = str(temp) + status[:-1]
+            return np.array(out)
+        
+        def unscramble(self, data, patten = [7,4]):
+            return self.scramble(data, patten, self.initScrambleStatus)
+except:
+    pass
 
 class TxDigital:
     def __init__(self, fs_inMHz, fs_outMHz):
