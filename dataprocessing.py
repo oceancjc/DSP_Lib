@@ -1169,7 +1169,7 @@ class ADC_Eval:
         self.__fundamentalTonePwrDB = 0
         self.__fundamentalToneFreqHz = 0
 
-    def realFFTTransform(self, data, plot = False):
+    def realFFTTransform(self, data, fftsize = 0, plot = False):
         '''
         Do raw FFT transfrom to real data, return frequency and raw fft complex values 
         Parameters
@@ -1189,10 +1189,10 @@ class ADC_Eval:
             The raw FFT result.
         '''
         datalen = len(data)
-        n = int( 2 ** np.ceil(np.log2(datalen)) )
+        n = int( 2 ** np.ceil(np.log2(datalen)) ) if fftsize == 0 else fftsize
         f = np.linspace(0, self.fs // 2, n // 2 + 1)
         s = np.fft.rfft(data, n) / n * 2
-        print(n,len(f),datalen, len(s))
+        print("FFTSIZE = {}, Freq_LEN = {}, DATA_LEN = {}, FFT_RESULT_LEN = {}".format(n,len(f),datalen, len(s)))
         if plot == True:
             plt.figure
             plt.plot(f/1000, np.abs(s))
@@ -1204,8 +1204,8 @@ class ADC_Eval:
         self.freqHz, self.rawFFTData = f,s
         return f,s
     
-    def realFFTSpectrum(self, data, plot = False, format = 'db'):
-        f,s = self.realFFTTransform(data, False)
+    def realFFTSpectrum(self, data, fftsize = 0, plot = False, format = 'db'):
+        f,s = self.realFFTTransform(data, fftsize, False)
         s = np.abs(s)
         self.SpectrumDataDB = 20*np.log10(np.clip(s,1e-10,1e100))
         self.DcPwrDB = self.SpectrumDataDB[0]
