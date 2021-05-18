@@ -1169,7 +1169,7 @@ class ADC_Eval:
         self.__fundamentalTonePwrDB = 0
         self.__fundamentalToneFreqHz = 0
 
-    def realFFTTransform(self, data, fftsize = 0, plot = False):
+    def realFFTTransform(self, data, fftsize = 0, window = 'blackmanharris', plot = False):
         '''
         Do raw FFT transfrom to real data, return frequency and raw fft complex values 
         Parameters
@@ -1189,9 +1189,20 @@ class ADC_Eval:
             The raw FFT result.
         '''
         datalen = len(data)
-        n = int( 2 ** np.ceil(np.log2(datalen)) ) if fftsize == 0 else fftsize
-        f = np.linspace(0, self.fs // 2, n // 2 + 1)
+        n = datalen if fftsize == 0 else int(fftsize)
+        #f = np.linspace(0, int(self.fs // 2), int(n // 2) + 1)
+        f = np.fft.rfftfreq(n, d=1 / self.fs) # 生成频率轴
+        dcindex = np.argmin(f)
+        try:
+            WINLEN = 128
+            windows = signal.get_window(window, n)
+            data[:WINLEN//2]  *= windows[:WINLEN//2]
+            data[-WINLEN//2:] *= windows[WINLEN//2:]
+        except:
+            print('No valid window type found: {}'.format(window))
+        
         s = np.fft.rfft(data, n) / n * 2
+        s[dcindex] *= .5
         print("FFTSIZE = {}, Freq_LEN = {}, DATA_LEN = {}, FFT_RESULT_LEN = {}".format(n,len(f),datalen, len(s)))
         if plot == True:
             plt.figure
@@ -1204,10 +1215,10 @@ class ADC_Eval:
         self.freqHz, self.rawFFTData = f,s
         return f,s
     
-    def realFFTSpectrum(self, data, fftsize = 0, plot = False, format = 'db'):
-        f,s = self.realFFTTransform(data, fftsize, False)
+    def realFFTSpectrum(self, data, fftsize = 0, window = 'blackmanharris', plot = False, format = 'db'):
+        f,s = self.realFFTTransform(data, fftsize, window, False)
         s = np.abs(s)
-        self.SpectrumDataDB = 20*np.log10(np.clip(s,1e-10,1e100))
+        self.SpectrumDataDB = 20*np.log10(np.clip(s,1e-16,1e100))
         self.DcPwrDB = self.SpectrumDataDB[0]
         if format == 'db':    s = self.SpectrumDataDB
         
@@ -1221,13 +1232,43 @@ class ADC_Eval:
             plt.show()       
         return f, s
     
+    '''
+    This version utilize scipy.signal.periodogram functions with the same default window in va. 
+    Got some bug. Do not use in real design
+    '''
+    def realFFTSpectrum2(self, data, fftsize = 0, window = 'blackmanharris', plot = False, format = 'db'):
+        FFTSIZE = len(data) if fftsize <= 0 else fftsize
+        f,s = signal.periodogram(data, self.fs, window = 'blackmanharris', nfft=FFTSIZE, 
+                                 scaling = 'spectrum', return_onesided=True,detrend=False)
+
+        f = np.fft.fftshift(f)
+        s = 2 * np.fft.fftshift(s)
+        dc_index,dc_val = self.dcPowerMeasure(f,s)
+        s[dc_index] /= 2
+        if format == 'db':    s = 10*np.log10(np.clip(s,1e-30,1e100))
+        if plot == True:
+            plt.figure
+            plt.plot(f/1000, s)
+            plt.xlabel('Frequency (kHz)')
+            if format == 'db':    plt.ylabel('Amplitude (dBFs)')
+            else:                 plt.ylabel('Amplitude')
+            plt.grid()
+            plt.show()       
+        return f, s       
+    
     def loadData(self,filename):
         dataarray = pd.read_csv(filename, header=None).to_numpy()
         return dataarray.T.tolist()[0]
     
+    def dcPowerMeasure(self, freqHz, spectrumDataDB):
+        return np.argmin(freqHz), spectrumDataDB[np.argmin(freqHz)]
+    
     def fundPowerSingleTone(self, freqHz, spectrumDataDB):
+        dc_index, dc = self.dcPowerMeasure(freqHz, spectrumDataDB)
+        spectrumDataDB[dc_index] = -300
         peak = max(spectrumDataDB)
         self.__fundamentalTonePwrDB = peak
+        spectrumDataDB[dc_index] = dc
         if type(spectrumDataDB) == list:    
             self.__fundamentalToneFreqHz = freqHz[spectrumDataDB.index(peak)]
             return freqHz[spectrumDataDB.index(peak)], peak
@@ -1271,6 +1312,7 @@ class ADC_Eval:
         pwr_fft = np.abs(self.rawFFTData)**2
         pwr_freq = np.sum( pwr_fft[1:] )  #remove DC power
         pwr_signal = max(pwr_fft[1:])
+        print('Totoal Freq Domain Power = {}, Signal Power = {}'.format(pwr_freq,pwr_signal))
         sinad = 10*np.log10(pwr_signal / (pwr_freq - pwr_signal))
         #print(pwr_time,pwr_freq,pwr_signal,sinad)
         return sinad
