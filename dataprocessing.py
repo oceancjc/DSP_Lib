@@ -1232,33 +1232,12 @@ class ADC_Eval:
             plt.show()       
         return f, s
     
-    '''
-    This version utilize scipy.signal.periodogram functions with the same default window in va. 
-    Got some bug. Do not use in real design
-    '''
-    def realFFTSpectrum2(self, data, fftsize = 0, window = 'blackmanharris', plot = False, format = 'db'):
-        FFTSIZE = len(data) if fftsize <= 0 else fftsize
-        f,s = signal.periodogram(data, self.fs, window = 'blackmanharris', nfft=FFTSIZE, 
-                                 scaling = 'spectrum', return_onesided=True,detrend=False)
-
-        f = np.fft.fftshift(f)
-        s = 2 * np.fft.fftshift(s)
-        dc_index,dc_val = self.dcPowerMeasure(f,s)
-        s[dc_index] /= 2
-        if format == 'db':    s = 10*np.log10(np.clip(s,1e-30,1e100))
-        if plot == True:
-            plt.figure
-            plt.plot(f/1000, s)
-            plt.xlabel('Frequency (kHz)')
-            if format == 'db':    plt.ylabel('Amplitude (dBFs)')
-            else:                 plt.ylabel('Amplitude')
-            plt.grid()
-            plt.show()       
-        return f, s       
-    
     def loadData(self,filename):
         dataarray = pd.read_csv(filename, header=None).to_numpy()
         return dataarray.T.tolist()[0]
+        
+    def exportToVisualAnalog(self, data):
+        pass
     
     def dcPowerMeasure(self, freqHz, spectrumDataDB):
         return np.argmin(freqHz), spectrumDataDB[np.argmin(freqHz)]
@@ -1292,9 +1271,20 @@ class ADC_Eval:
         f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, highestOrder)
         return 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
         
-    def sfdr(self, withHarmoics = True):
+    def sfdr(self, withHarmoics = True, isdBFS = False):
+        '''
+        Spurious free dynamic range (SFDR) is the ratio of the rms value of the signal to the rms value
+        of the worst spurious signal regardless of where it falls in the frequency spectrum. The worst
+        spur may or may not be a harmonic of the original signal. SFDR is an important specification in
+        communications systems because it represents the smallest value of signal that can be distinguished 
+        from a large interfering signal (blocker). SFDR can be specified with respect to full-scale (dBFS)
+        or with respect to the actual signal amplitude (dBc). 
+        
+        reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
+        '''
         f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
-        if withHarmoics is True:    return harmonics[0] - max(harmonics[1:])
+        if withHarmoics is True:    
+            return harmonics[0] - max(harmonics[1:]) if isdBFS == True else -max(harmonics[1:])
         freqListHz = self.freqHz.tolist()
         harmoicIndex_s = [freqListHz.index(i) for i in f]
         
@@ -1303,34 +1293,76 @@ class ADC_Eval:
         sortedSpectrumDataDB_s = SpectrumDataDB_s[1:].sort(reverse = True)
         return sortedSpectrumDataDB_s[0] - sortedSpectrumDataDB_s[1]
             
-    def thd(self):
-        totalDistortion = self.totalHarmonicPwr(self.freqHz, self.SpectrumDataDB, 6)
+    def thd(self, highestOrder = 6):
+        '''
+        Total harmonic distortion (THD) is the ratio of the rms value of the fundamental signal to the
+        mean value of the root-sum-square of its harmonics (generally, only the first 5 harmonics are
+        significant). THD of an ADC is also generally specified with the input signal close to full-scale,
+        although it can be specified at any level
+        
+        reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
+        '''
+        totalDistortion = self.totalHarmonicPwr(self.freqHz, self.SpectrumDataDB, highestOrder)
         return self.__fundamentalTonePwrDB - totalDistortion
+    
+    def thd_add_N(self):
+        '''
+        Total harmonic distortion plus noise (THD + N) is the ratio of the rms value of the fundamental
+        signal to the mean value of the root-sum-square of its harmonics plus all noise components
+        (excluding dc). The bandwidth over which the noise is measured must be specified. In the case of
+        an FFT, the bandwidth is dc to fs/2. (If the bandwidth of the measurement is dc to fs/2 (the
+        Nyquist bandwidth), THD + N is equal to SINAD). Be warned, however, that in audio applications 
+        the measurement bandwidth may not necessarily be the Nyquist bandwidth.
+        
+        reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
+        '''
+        pwr_total_s = np.abs(self.rawFFTData)**2
+        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )  #remove DC power
+        pwr_tone = max( pwr_total_s[1:] )
+        return 10*np.log10( pwr_total_withoutDC - pwr_tone )
     
     def sinad(self):
         #pwr_time = np.sum(np.array(data)**2) / len(data)
-        pwr_fft = np.abs(self.rawFFTData)**2
-        pwr_freq = np.sum( pwr_fft[1:] )  #remove DC power
-        pwr_signal = max(pwr_fft[1:])
-        print('Totoal Freq Domain Power = {}, Signal Power = {}'.format(pwr_freq,pwr_signal))
-        sinad = 10*np.log10(pwr_signal / (pwr_freq - pwr_signal))
+        pwr_total_s = np.abs(self.rawFFTData)**2
+        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )  #remove DC power
+        pwr_tone = max( pwr_total_s[1:] )
+        print('Totoal Freq Domain Power without DC = {}, Signal Power = {}'.format(pwr_total_withoutDC,pwr_tone))
+        sinad = 10*np.log10(pwr_tone / (pwr_total_withoutDC - pwr_tone))
         #print(pwr_time,pwr_freq,pwr_signal,sinad)
         return sinad
         
     def enob(self):
         return np.round((self.sinad() - 1.76) / 6.02, 2)
     
-    def snr(self):
+    def snr(self, isDC = False):
         '''
-        reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
+        Signal-to-noise ratio (SNR, or sometimes called SNR-without-harmonics) is calculated from the
+        FFT data the same as SINAD, except that the signal harmonics are excluded from the
+        calculation, leaving only the noise terms. In practice, it is only necessary to exclude the first 5
+        harmonics, since they dominate. The SNR plot will degrade at high input frequencies, but
+        generally not as rapidly as SINAD because of the exclusion of the harmonic terms.
+        
+        reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf / Eq. 12
         '''
-        return -10*np.log10( 10**(-self.sinad() / 10) - 10**(-self.thd() / 10) )
+        if isDC == False:    return -10*np.log10( 10**(-self.sinad() / 10) - 10**(-self.thd() / 10) )
+        pwr_total_s = np.abs(self.rawFFTData)**2
+        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )  #remove DC power 
+        return -10*np.log10(pwr_total_withoutDC)
     
-    def noisefloor(self):
+    def noisefloor(self, isDC = False):
         '''
         reference: https://www.analog.com/cn/technical-articles/noise-spectral-density.html
         '''
-        return -self.snr() - 10*np.log10(self.fs / 2)
+        return -self.snr(isDC) - 10*np.log10(self.fs / 2)
+    
+        
+    def noiseFreeAndEffectiveResolution(self, rawSamplesUnderDC, adcWidth):
+        datas = np.array(rawSamplesUnderDC)
+        mean, var, std, vpp = datas.mean(), datas.var(), datas.std(), datas.max()-datas.min()
+        nf_resolution, eff_resolustion = np.log2(2**adcWidth / vpp), np.log2(2**adcWidth / std)
+        print('Average = {}, Var = {}, LSBPP = {}'.format(mean,var,vpp))
+        print('ER = {}, NFR = {}'.format(eff_resolustion, nf_resolution))
+        return [nf_resolution, eff_resolustion]
         
 '''
 if __name__ == '__main__':
