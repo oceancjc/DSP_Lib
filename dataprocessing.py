@@ -1346,8 +1346,8 @@ class ADC_Eval:
         '''
         if isDC == False:    return -10*np.log10( 10**(-self.sinad() / 10) - 10**(-self.thd() / 10) )
         pwr_total_s = np.abs(self.rawFFTData)**2
-        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )  #remove DC power 
-        return -10*np.log10(pwr_total_withoutDC)
+        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )     #remove DC power 
+        return -10*np.log10(np.clip(pwr_total_withoutDC,1e-32,1e100))
     
     def noisefloor(self, isDC = False):
         '''
