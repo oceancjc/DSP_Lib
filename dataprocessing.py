@@ -1303,7 +1303,7 @@ class ADC_Eval:
         reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
         '''
         totalDistortion = self.totalHarmonicPwr(self.freqHz, self.SpectrumDataDB, highestOrder)
-        return self.__fundamentalTonePwrDB - totalDistortion
+        return totalDistortion - self.__fundamentalTonePwrDB  
     
     def thd_add_N(self):
         '''
