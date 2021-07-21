@@ -238,7 +238,7 @@ def fft_process(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
         
         if ifplot == 1:
             plt.close('Picture 1')
-            plt.figure('Picture 1')
+            plt.figure('Picture 1',figsize = (12,9))
             plt.plot(freq/1e6,fft_out_db,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -246,7 +246,7 @@ def fft_process(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
             plt.show()
         elif ifplot == 2: 
             plt.close('Picture 2')
-            plt.figure('Picture 2')
+            plt.figure('Picture 2',figsize = (12,9))
             plt.plot(freq,fft_out_db,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -282,7 +282,7 @@ def fft_transform(sig_i, sig_q, samplingfreq, FFTsize,  show = 1, nolog=False):
         
         if show == 1:
             plt.close('Picture 1')
-            plt.figure('Picture 1')
+            plt.figure('Picture 1',figsize = (12,9))
             plt.plot(freq/1e6,fft_out_db,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -290,7 +290,7 @@ def fft_transform(sig_i, sig_q, samplingfreq, FFTsize,  show = 1, nolog=False):
             plt.show()
         elif show == 2: 
             plt.close('Picture 2')
-            plt.figure('Picture 2')
+            plt.figure('Picture 2',figsize = (12,9))
             plt.plot(freq,fft_out_db,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -321,7 +321,7 @@ def fft_spectrum(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
         
         if ifplot == 1:
             plt.close('Picture 1')
-            plt.figure('Picture 1')
+            plt.figure('Picture 1',figsize = (12,9))
             plt.plot(f/1e6,psd,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -329,7 +329,7 @@ def fft_spectrum(sig_i, sig_q, samplingfreq, FFTsize,  ifplot = 1, bit = 0):
             plt.show()
         elif ifplot == 2: 
             plt.close('Picture 2')
-            plt.figure('Picture 2')
+            plt.figure('Picture 2',figsize = (12,9))
             plt.plot(f,psd,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -367,7 +367,7 @@ def fft_spectrum2(sig_i, sig_q, samplingfreq, FFTsize,  show = True, average = 0
         
         if show == True:
             plt.close('Picture 1')
-            plt.figure('Picture 1')
+            plt.figure('Picture 1',figsize = (12,9))
             plt.plot(f/1e6,psd,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -393,7 +393,7 @@ def fft_density(sig_i, sig_q, samplingfreq, FFTsize,  show = True):
         
         if show == True:
             plt.close('Picture 1')
-            plt.figure('Picture 1')
+            plt.figure('Picture 1',figsize = (12,9))
             plt.plot(f/1e6,psd,'g')
             plt.xlabel('Frequency (MHz)')
             plt.ylabel('Amplitude (dBFS)')
@@ -1165,10 +1165,22 @@ class ADC_Eval:
         self.SpectrumDataDB = 0
         self.DcPwrDB = 0
         self.freqHz = 0
+        self.binHarmonic = 3
+        self.binFund = 10
+        
+        self.totalNoisePwr = 0
+        self.noisePwrPerBin = 0
         
         self.__fundamentalTonePwrDB = 0
         self.__fundamentalToneFreqHz = 0
 
+        self.__indexFund = 0
+        self.__indexHarm = 0
+        self.__indexDC = 0
+        self.__indexDCWithBin = list(range(7))
+        self.__indexFundWithBin = []
+        self.__indexHarmWithBin = []
+        
     def realFFTTransform(self, data, fftsize = 0, window = 'blackmanharris', plot = False):
         '''
         Do raw FFT transfrom to real data, return frequency and raw fft complex values 
@@ -1205,7 +1217,7 @@ class ADC_Eval:
         s[dcindex] *= .5
         print("FFTSIZE = {}, Freq_LEN = {}, DATA_LEN = {}, FFT_RESULT_LEN = {}".format(n,len(f),datalen, len(s)))
         if plot == True:
-            plt.figure
+            plt.figure(figsize = (12,9))
             plt.plot(f/1000, np.abs(s))
             plt.xlabel('Frequency (kHz)')
             plt.ylabel('Amplitude')
@@ -1218,57 +1230,70 @@ class ADC_Eval:
     def realFFTSpectrum(self, data, fftsize = 0, window = 'blackmanharris', plot = False, format = 'db'):
         f,s = self.realFFTTransform(data, fftsize, window, False)
         s = np.abs(s)
-        self.SpectrumDataDB = 20*np.log10(np.clip(s,1e-16,1e100))
+        self.SpectrumDataDB = 20*np.log10(np.clip(s,1e-32,1e100))
         self.DcPwrDB = self.SpectrumDataDB[0]
         if format == 'db':    s = self.SpectrumDataDB
         
         if plot == True:
-            plt.figure
+            plt.figure(figsize = (12,9))
             plt.plot(f/1000, s)
             plt.xlabel('Frequency (kHz)')
             if format == 'db':    plt.ylabel('Amplitude (dBFs)')
             else:                 plt.ylabel('Amplitude')
             plt.grid()
-            plt.show()       
+            plt.show()   
+    
+        self.genFFTAnalysis()
         return f, s
     
+    def binPwr(self, singleSideWidth = 3, centralIndex = 0):
+        if self.noisePwrPerBin == 0:    self.averageBinNoise()
+        peakindex_range = [i for i in np.arange(-singleSideWidth,singleSideWidth+1)+centralIndex] if centralIndex >= singleSideWidth else list(range(centralIndex + singleSideWidth)) 
+        peak = 0
+        for i in peakindex_range: peak += np.abs(self.rawFFTData[i])**2 
+        return 10*np.log10(np.clip(peak - self.noisePwrPerBin*(2*singleSideWidth+1),1e-32,1e100))  
+        
     def loadData(self,filename):
         dataarray = pd.read_csv(filename, header=None).to_numpy()
         return dataarray.T.tolist()[0]
         
-    def exportToVisualAnalog(self, data):
-        pass
+    def exportToVisualAnalog(self, data, filename_txt):
+        np.savetxt(filename_txt, data, fmt='%.10f') 
     
-    def dcPowerMeasure(self, freqHz, spectrumDataDB):
-        return np.argmin(freqHz), spectrumDataDB[np.argmin(freqHz)]
+    def dcPowerMeasure(self):
+        return np.argmin(self.freqHz), self.SpectrumDataDB[np.argmin(self.freqHz)]
     
-    def fundPowerSingleTone(self, freqHz, spectrumDataDB):
-        dc_index, dc = self.dcPowerMeasure(freqHz, spectrumDataDB)
-        spectrumDataDB[dc_index] = -300
-        peak = max(spectrumDataDB)
-        self.__fundamentalTonePwrDB = peak
-        spectrumDataDB[dc_index] = dc
-        if type(spectrumDataDB) == list:    
-            self.__fundamentalToneFreqHz = freqHz[spectrumDataDB.index(peak)]
-            return freqHz[spectrumDataDB.index(peak)], peak
-        else:     
-            self.__fundamentalToneFreqHz = freqHz[np.argmax(spectrumDataDB)]
-            return freqHz[np.argmax(spectrumDataDB)], peak   
-    
-    def harmonicMeasure(self, freqHz, spectrumDataDB, highestOrder = 6):
-        fFoundHz, peakDB = self.fundPowerSingleTone(freqHz, spectrumDataDB) 
-        freqHz = freqHz.tolist()
-        freqs = [i*fFoundHz for i in range(1,highestOrder+1)]
+    def genFFTAnalysis(self, binFund = -1, binHarm = -1):
+        if binFund >=0:    self.binFund     = binFund
+        if binHarm >=0:    self.binHarmonic = binHarm
+        peak = max(self.SpectrumDataDB[2:])
+        self.__indexFund = int(self.SpectrumDataDB.index(peak)) if type(self.SpectrumDataDB) == list  else int(np.argmax(self.SpectrumDataDB)) 
+        self.__indexFundWithBin = [int(i) for i in np.arange(-self.binFund,self.binFund+1)+self.__indexFund] if self.__indexFund >= self.binFund else list(range(self.__indexFund + self.binFund))
+        freqHz = self.freqHz.tolist()
+        fFoundHz = freqHz[self.__indexFund]
+        freqs = [i*fFoundHz for i in range(1,12+1)]   #12nd harmonic
         NYQZONE = self.fs / 2
         for i in range(1,len(freqs)):
             n = freqs[i] // NYQZONE
             if n % 2 == 0:    freqs[i] %= NYQZONE
             else:             freqs[i] = NYQZONE - (freqs[i] % NYQZONE)
-        harmonics = [peakDB] + [spectrumDataDB[freqHz.index(freqs[i])] for i in range(1,len(freqs))]
-        return freqs,harmonics
+        self.__indexHarm = [freqHz.index(freqs[i]) for i in range(1,len(freqs))]
+        for index in self.__indexHarm:
+            temp = [int(i) for i in np.arange(-self.binHarmonic,self.binHarmonic+1)+index] if index >= self.binHarmonic else list(range(index + self.binHarmonic)) 
+            self.__indexHarmWithBin.append(temp)
     
-    def totalHarmonicPwr(self, freqHz, spectrumDataDB, highestOrder = 6):
-        f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, highestOrder)
+    def fundPowerSingleTone(self):
+        self.__fundamentalTonePwrDB = self.binPwr(singleSideWidth = self.binFund, centralIndex = self.__indexFund)
+        return self.freqHz[self.__indexFund], self.__fundamentalTonePwrDB
+    
+    def harmonicMeasure(self,highestOrder = 6):
+        fFundHz, peakDB = self.fundPowerSingleTone() 
+        freqHz = self.freqHz.tolist()
+        harmonics = [peakDB] + [self.binPwr(singleSideWidth = self.binHarmonic, centralIndex = i) for i in self.__indexHarm[:highestOrder]]
+        return [fFundHz] + [freqHz[i] for i in self.__indexHarm[:highestOrder]], harmonics
+   
+    def totalHarmonicPwr(self, highestOrder = 6):
+        f, harmonics = self.harmonicMeasure(highestOrder)
         return 10*np.log10( np.sum(10**(np.array(harmonics[1:]) / 10)) )
         
     def sfdr(self, withHarmoics = True, isdBFS = False):
@@ -1282,7 +1307,7 @@ class ADC_Eval:
         
         reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
         '''
-        f, harmonics = self.harmonicMeasure(self.freqHz, self.SpectrumDataDB, 6)
+        f, harmonics = self.harmonicMeasure(6)
         if withHarmoics is True:    
             return harmonics[0] - max(harmonics[1:]) if isdBFS == True else -max(harmonics[1:])
         freqListHz = self.freqHz.tolist()
@@ -1302,7 +1327,7 @@ class ADC_Eval:
         
         reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
         '''
-        totalDistortion = self.totalHarmonicPwr(self.freqHz, self.SpectrumDataDB, highestOrder)
+        totalDistortion = self.totalHarmonicPwr(highestOrder)
         return totalDistortion - self.__fundamentalTonePwrDB  
     
     def thd_add_N(self):
@@ -1317,15 +1342,17 @@ class ADC_Eval:
         reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf
         '''
         pwr_total_s = np.abs(self.rawFFTData)**2
-        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )  #remove DC power
-        pwr_tone = max( pwr_total_s[1:] )
+        pwr_total_withoutDC = np.sum( pwr_total_s[len(self.__indexDCWithBin):] )  #remove DC power
+        pwr_tone = self.fundPowerSingleTone()[1]
+        pwr_tone = 10**(pwr_tone/10)
         return 10*np.log10( pwr_total_withoutDC - pwr_tone )
     
     def sinad(self):
         #pwr_time = np.sum(np.array(data)**2) / len(data)
         pwr_total_s = np.abs(self.rawFFTData)**2
-        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )  #remove DC power
-        pwr_tone = max( pwr_total_s[1:] )
+        pwr_total_withoutDC = np.sum( pwr_total_s[len(self.__indexDCWithBin):] )   #remove DC power
+        pwr_tone = self.fundPowerSingleTone()[1]
+        pwr_tone = 10**(pwr_tone/10)
         print('Totoal Freq Domain Power without DC = {}, Signal Power = {}'.format(pwr_total_withoutDC,pwr_tone))
         sinad = 10*np.log10(pwr_tone / (pwr_total_withoutDC - pwr_tone))
         #print(pwr_time,pwr_freq,pwr_signal,sinad)
@@ -1334,7 +1361,7 @@ class ADC_Eval:
     def enob(self):
         return np.round((self.sinad() - 1.76) / 6.02, 2)
     
-    def snr(self, isDC = False):
+    def snr(self, isDC = False, highestOrder = 9):
         '''
         Signal-to-noise ratio (SNR, or sometimes called SNR-without-harmonics) is calculated from the
         FFT data the same as SINAD, except that the signal harmonics are excluded from the
@@ -1344,16 +1371,32 @@ class ADC_Eval:
         
         reference：https://www.analog.com/media/cn/training-seminars/tutorials/MT-003_cn.pdf / Eq. 12
         '''
-        if isDC == False:    return -10*np.log10( 10**(-self.sinad() / 10) - 10**(-self.thd() / 10) )
+        if isDC == False:    return -10*np.log10( 10**(-self.sinad() / 10) - 10**( self.thd(highestOrder) / 10) )
         pwr_total_s = np.abs(self.rawFFTData)**2
-        pwr_total_withoutDC = np.sum( pwr_total_s[1:] )     #remove DC power 
+        pwr_total_withoutDC = np.sum( pwr_total_s[len(self.__indexDCWithBin):] )      #remove DC power 
         return -10*np.log10(np.clip(pwr_total_withoutDC,1e-32,1e100))
+    
+    def snrFS(self, isDC = False, highestOrder = 9):
+        if isDC == False:     return self.snr(isDC, highestOrder) - self.__fundamentalTonePwrDB
+        else:    return self.snr(isDC, highestOrder)
     
     def noisefloor(self, isDC = False):
         '''
         reference: https://www.analog.com/cn/technical-articles/noise-spectral-density.html
         '''
+        if isDC == False:    return 10*np.log10(self.totalNoisePwr / (self.fs / 2))
         return -self.snr(isDC) - 10*np.log10(self.fs / 2)
+    
+    def averageBinNoise(self):
+        self.totalNoisePwr = 0
+        index_totalHarmWithBin = []
+        for i in self.__indexHarmWithBin:    index_totalHarmWithBin.extend(i)
+        #print(self.__indexDCWithBin, self.__indexFundWithBin, index_totalHarmWithBin)
+        index_DC_Fund_Harm = list(set(self.__indexDCWithBin + self.__indexFundWithBin + index_totalHarmWithBin))
+        for i in range(len(self.rawFFTData)):
+            if i not in index_DC_Fund_Harm:    self.totalNoisePwr += np.abs(self.rawFFTData[i])**2
+        self.noisePwrPerBin = self.totalNoisePwr / (len(self.rawFFTData) - len(index_DC_Fund_Harm))
+        return 10*np.log10(self.noisePwrPerBin)    
     
         
     def noiseFreeAndEffectiveResolution(self, rawSamplesUnderDC, adcWidth):
