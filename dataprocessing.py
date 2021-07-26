@@ -15,6 +15,17 @@ import scipy.signal as signal
 from matplotlib import pyplot as plt
 import gc
 
+def phaseNoise2JitterPs(phaseNoiseDic,f):
+    def log2linear_rms(A,f):
+        return ((2*(10**(A/10)))**.5)/(2*np.pi*f)
+    l = len(phaseNoiseDic)
+    phaseNoiseDic = dict(sorted(phaseNoiseDic.items(),key = lambda x:x[0]))
+    f_s,pn_s = list(phaseNoiseDic.keys()), [10**(i/10) for i in phaseNoiseDic.values()]
+    A = 0
+    for i in range(l-1):        A += (pn_s[i]+pn_s[i+1])*.5 * (f_s[i+1]-f_s[i])
+    return ((2*A)**.5)/(2*np.pi*f)*1e12
+    #A = 10*np.log10(A)
+    #return ((2*(10**(A/10)))**.5)/(2*np.pi*f)*1e12
 
 def ber(t,r):
     t = np.array(t).reshape((-1,1)).astype(int)
@@ -24,7 +35,6 @@ def ber(t,r):
     errcount = np.sum(err)
     return errcount,  errcount /  length
     
-
 def data_normalize(data_ins,bit,signed = 1):
 
     if signed == 1:
