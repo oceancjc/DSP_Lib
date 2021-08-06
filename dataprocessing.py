@@ -1277,7 +1277,7 @@ class ADC_Eval:
         if binFund >=0:    self.binFund     = binFund
         if binHarm >=0:    self.binHarmonic = binHarm
         peak = max(self.SpectrumDataDB[2:])
-        self.__indexFund = int(self.SpectrumDataDB.index(peak)) if type(self.SpectrumDataDB) == list  else int(np.argmax(self.SpectrumDataDB)) 
+        self.__indexFund = int(self.SpectrumDataDB.index(peak)) if type(self.SpectrumDataDB) == list  else int(np.argmax(self.SpectrumDataDB[2:])) + 2 
         self.__indexFundWithBin = [int(i) for i in np.arange(-self.binFund,self.binFund+1)+self.__indexFund] if self.__indexFund >= self.binFund else list(range(self.__indexFund + self.binFund))
         freqHz = self.freqHz.tolist()
         fFoundHz = freqHz[self.__indexFund]
@@ -1363,7 +1363,7 @@ class ADC_Eval:
         pwr_total_withoutDC = np.sum( pwr_total_s[len(self.__indexDCWithBin):] )   #remove DC power
         pwr_tone = self.fundPowerSingleTone()[1]
         pwr_tone = 10**(pwr_tone/10)
-        print('Totoal Freq Domain Power without DC = {}, Signal Power = {}'.format(pwr_total_withoutDC,pwr_tone))
+        #print('Totoal Freq Domain Power without DC = {}, Signal Power = {}'.format(pwr_total_withoutDC,pwr_tone))
         sinad = 10*np.log10(pwr_tone / (pwr_total_withoutDC - pwr_tone))
         #print(pwr_time,pwr_freq,pwr_signal,sinad)
         return sinad
