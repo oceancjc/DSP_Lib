@@ -15,6 +15,35 @@ import scipy.signal as signal
 from matplotlib import pyplot as plt
 import gc
 
+
+def sqrtNewTon(a, iters = 6):
+    '''
+    This function is only for learning Newton method to solve continuous nonlinear
+    curve functions 
+    x_next = x - f(x)/f'(x)  Init value of x should never be 0
+    Parameters
+    ----------
+    a : Int
+        Non negtive number.
+    iters : Int, optional
+        Iterations for newton method. The default is 6.
+
+    Returns
+    -------
+    x : float
+        non negtive Square root of a.
+    '''
+    #Init value never be 0 in case dydz would be 0, which cause divide by 0 error
+    x = 1
+    if a == 0:        return 0
+    elif a < 0:    raise ValueError("a should no less than 0")
+    for _ in range(int(iters)):
+        y = x**2 - a
+        dydx = 2*x
+        x_next = x - y/dydx
+        x = x_next
+    return x
+        
 def phaseNoise2JitterPs(phaseNoiseDic,f):
     def log2linear_rms(A,f):
         return ((2*(10**(A/10)))**.5)/(2*np.pi*f)
